@@ -180,4 +180,89 @@ export class UsdSceneClient {
         };
         await AppStreamer.sendMessage(msg);
     }
+
+    /**
+     * Sets the exploded view interpolation factor across the Disc Brake Assembly (0.0 = assembled, 1.0 = fully exploded).
+     * @param factor Float between 0.0 and 1.0
+     * @param animate If true, Kit server performs 60 FPS smooth cubic easing
+     * @param duration Duration in seconds (default 0.8s)
+     */
+    public async setExplodedView(factor: number, animate = true, duration = 0.8): Promise<any> {
+        return this.request('setExplodedViewRequest', 'setExplodedViewResponse', {
+            factor: Math.max(0, Math.min(1, factor)),
+            animate,
+            duration
+        });
+    }
+
+    /**
+     * Queries the current exploded view factor, step progress, and rotor kinematics state.
+     */
+    public async getExplodedViewState(): Promise<any> {
+        return this.request('getExplodedViewStateRequest', 'getExplodedViewStateResponse');
+    }
+
+    /**
+     * Toggles continuous mechanical rotation of the brake rotor disc at a given RPM.
+     */
+    public async setRotorKinematics(enabled: boolean, rpm = 120): Promise<any> {
+        return this.request('setRotorKinematicsRequest', 'setRotorKinematicsResponse', {
+            enabled,
+            rpm
+        });
+    }
+
+    /**
+     * Applies selective mechanical disassembly or assembly to a specific component group:
+     * 'bolts' | 'caliper' | 'pads' | 'hub' | 'step_explode' | 'step_assemble' | 'all' | 'reset'.
+     * @param step Target component group or sequence action
+     * @param progress 1.0 for exploded, 0.0 for assembled in place
+     * @param animate If true, smoothly eases at 60 FPS on the server
+     * @param duration Animation duration in seconds (default 0.8s)
+     * @param action Optional explicit 'assemble' or 'disassemble'
+     */
+    public async disassembleStep(step: string, progress = 1.0, animate = true, duration = 0.8, action?: string): Promise<any> {
+        return this.request('disassembleStepRequest', 'disassembleStepResponse', {
+            step,
+            progress: Math.max(0, Math.min(1, progress)),
+            animate,
+            duration,
+            action: action || (progress <= 0.0 ? 'assemble' : 'disassemble')
+        });
+    }
+
+    /**
+     * Assembles a specific component back into place with smooth 60 FPS animation.
+     */
+    public async assembleStep(step: string, animate = true, duration = 0.8): Promise<any> {
+        return this.disassembleStep(step, 0.0, animate, duration, 'assemble');
+    }
+
+    /**
+     * Explodes a specific component outwards with smooth 60 FPS animation.
+     */
+    public async explodeStep(step: string, animate = true, duration = 0.8): Promise<any> {
+        return this.disassembleStep(step, 1.0, animate, duration, 'disassemble');
+    }
+
+    /**
+     * Explodes the next component in sequential mechanical order ('bolts' -> 'caliper' -> 'pads' -> 'hub').
+     */
+    public async stepExplodeNext(animate = true): Promise<any> {
+        return this.disassembleStep('step_explode', 1.0, animate);
+    }
+
+    /**
+     * Assembles the next component back into place in reverse mechanical order ('hub' -> 'pads' -> 'caliper' -> 'bolts').
+     */
+    public async stepAssembleNext(animate = true): Promise<any> {
+        return this.disassembleStep('step_assemble', 0.0, animate);
+    }
+
+    /**
+     * Resets and smoothly reassembles all components back into resting assembled state.
+     */
+    public async resetAssembly(animate = true, duration = 0.8): Promise<any> {
+        return this.setExplodedView(0.0, animate, duration);
+    }
 }

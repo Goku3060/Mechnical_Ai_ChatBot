@@ -219,6 +219,60 @@ export const GEMINI_USD_TOOLS = [
             },
             required: ['code']
         }
+    },
+    {
+        name: 'set_exploded_view',
+        description: 'Explodes or reassembles the mechanical Disc Brake Assembly in real-time. Factor ranges from 0.0 (completely assembled) to 1.0 (fully exploded view) or intermediate values (e.g. 0.5). Call this when the user asks to explode the view, separate parts, see internal assembly structure, or reassemble the brake.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                factor: {
+                    type: 'NUMBER',
+                    description: 'Explosion factor between 0.0 (assembled) and 1.0 (fully exploded). 0.0 brings all parts back together.'
+                }
+            },
+            required: ['factor']
+        }
+    },
+    {
+        name: 'set_rotor_kinematics',
+        description: 'Starts or stops continuous rotation/spinning of the ventilated brake rotor disc to demonstrate mechanical kinematics, testing rotation, or simulating vehicle motion.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                enabled: {
+                    type: 'BOOLEAN',
+                    description: 'True to spin the rotor disc continuously, false to stop rotation.'
+                },
+                rpm: {
+                    type: 'NUMBER',
+                    description: 'Optional rotational speed in revolutions per minute (default 120 RPM).'
+                }
+            },
+            required: ['enabled']
+        }
+    },
+    {
+        name: 'disassemble_component',
+        description: 'Performs targeted mechanical disassembly or assembly of specific component groups (e.g. removing/installing caliper bolts, extracting/mounting the caliper, removing/installing friction brake pads, or detaching/assembling the wheel hub). Can also assemble or explode components one by one sequentially.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {
+                step: {
+                    type: 'STRING',
+                    description: "Component group or sequential action: 'bolts', 'caliper', 'pads', 'hub', 'step_explode' (explode next part in order), 'step_assemble' (assemble next part back in order), 'all', or 'reset' (assemble everything back in place)"
+                },
+                action: {
+                    type: 'STRING',
+                    description: "Action to perform: 'disassemble' (explodes the part outward) or 'assemble' (brings the part back into assembled position in place)."
+                },
+                progress: {
+                    type: 'NUMBER',
+                    description: 'Progress from 0.0 (fully assembled in place) to 1.0 (fully disassembled / exploded). Default is 1.0 for disassembly, 0.0 for assembly.'
+                }
+            },
+            required: ['step']
+        }
     }
 ];
 
@@ -239,9 +293,17 @@ YOU HAVE FULL READ AND WRITE ACCESS TO THE LIVE USD STAGE:
    - When the user asks for direct display color overrides on geometry, call 'set_prim_display_color'.
    - For complex custom scene manipulations, call 'execute_usd_code'.
    - NEVER tell the user that you only have inspection mode or that you lack write access! You have full interactive write access.
-4. Physical Dimensions: Call get_part_dimensions for authoritative millimeter (mm) measurements.
-5. Component Isolation: Call set_part_visibility with visible=false to hide occluding parts, or call focus_camera_on_part to frame the camera.
-6. Present technical answers with clean markdown: bold part names, bulleted dimensions in mm, and confirmation of applied material changes.`;
+4. Exploded View & Kinematics:
+   - When the user asks to explode the view, separate parts, or inspect internal components, call 'set_exploded_view' with factor 1.0.
+   - When the user asks to assemble, reassemble, or reset the assembly, call 'set_exploded_view' with factor 0.0 (or 'disassemble_component' with step='reset').
+   - When the user asks to explode part by part or explode the next part, call 'disassemble_component' with step='step_explode'.
+   - When the user asks to assemble part by part or assemble the next part, call 'disassemble_component' with step='step_assemble'.
+   - When the user asks to remove, unbolt, or disassemble specific parts, call 'disassemble_component' with step ('bolts', 'caliper', 'pads', 'hub') and action='disassemble' (or progress=1.0).
+   - When the user asks to assemble or install specific parts (e.g. "Assemble the caliper", "Put the brake pads back", "Assemble the hub"), call 'disassemble_component' with step ('bolts', 'caliper', 'pads', 'hub') and action='assemble' (or progress=0.0).
+   - When the user asks to spin, rotate, or simulate rotation of the brake rotor disc, call 'set_rotor_kinematics' with enabled=true and rpm (default 120).
+5. Physical Dimensions: Call get_part_dimensions for authoritative millimeter (mm) measurements.
+6. Component Isolation: Call set_part_visibility with visible=false to hide occluding parts, or call focus_camera_on_part to frame the camera.
+7. Present technical answers with clean markdown: bold part names, bulleted dimensions in mm, and confirmation of applied material or kinematic changes.`;
 
     constructor(usdClient: UsdSceneClient) {
         this.usdClient = usdClient;
@@ -319,6 +381,21 @@ YOU HAVE FULL READ AND WRITE ACCESS TO THE LIVE USD STAGE:
                     return { status: 'success', highlighted_path: args.prim_path };
                 }
                 return { status: 'error', message: 'prim_path is required' };
+
+            case 'set_exploded_view':
+                return await this.usdClient.setExplodedView(args?.factor ?? 1.0, true, 0.8);
+
+            case 'set_rotor_kinematics':
+                return await this.usdClient.setRotorKinematics(args?.enabled !== false, args?.rpm || 120);
+
+            case 'disassemble_component': {
+                const action = args?.action;
+                let progress = args?.progress;
+                if (action === 'assemble') progress = 0.0;
+                else if (action === 'disassemble' || action === 'explode') progress = 1.0;
+                else if (progress === undefined) progress = 1.0;
+                return await this.usdClient.disassembleStep(args?.step || 'all', progress, true, 0.8, action);
+            }
 
             default:
                 throw new Error(`Unknown tool: ${name}`);

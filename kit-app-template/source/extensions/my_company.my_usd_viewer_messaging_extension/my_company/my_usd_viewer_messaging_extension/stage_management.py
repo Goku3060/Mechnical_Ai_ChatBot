@@ -8,6 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
+import time
 import traceback
 
 from pxr import UsdGeom, Usd, UsdShade, Gf, Sdf, Vt
@@ -64,6 +65,49 @@ def _get_prim_transform(prim):
     return {}
 
 
+DISASSEMBLY_OFFSETS = {
+    # Mounting Bolts: Retract vertically upward (+12 cm world) and follow caliper radially (+16 X, +26 Z world)
+    "/World/Disc_Brake_Assembly/occurrence_of_Mounting_Bolt": {
+        "delta_t": [0.16, -0.26, 0.12],
+        "step": "bolts",
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_Mounting_Bolt_001": {
+        "delta_t": [0.16, -0.26, 0.12],
+        "step": "bolts",
+    },
+    # Brake Caliper: Slides horizontally out to the left (+16 X, +26 Z world) and lifts above the table (+6 cm Y world)
+    "/World/Disc_Brake_Assembly/occurrence_of_Brake_Caliper": {
+        "delta_t": [0.16, -0.26, 0.06],
+        "step": "caliper",
+    },
+    # Caliper Mount: Sits between caliper and rotor disc, elevated above the table (+5 cm Y world)
+    "/World/Disc_Brake_Assembly/occurrence_of_Caliper_Mount": {
+        "delta_t": [0.10, -0.16, 0.05],
+        "step": "caliper",
+    },
+    # Inboard Brake Pad: Lifts up (+8 cm Y world) and floats over the caliper mount
+    "/World/Disc_Brake_Assembly/occurrence_of_brake_pads": {
+        "delta_t": [0.10, -0.16, 0.08],
+        "step": "pads",
+    },
+    # Outboard Brake Pad: Separates cleanly above table level (+3 cm Y world)
+    "/World/Disc_Brake_Assembly/occurrence_of_brake_pads_001": {
+        "delta_t": [0.08, -0.13, 0.03],
+        "step": "pads",
+    },
+    # Rotor Disc: Remains seated flat on top of the table (0 cm world delta)
+    "/World/Disc_Brake_Assembly/occurrence_of_rotor_disc": {
+        "delta_t": [0.0, 0.0, 0.0],
+        "step": "rotor",
+    },
+    # Wheel Hub & Studs: Centered in rotor disc, elevates clearly upwards (+16 cm Y world, +7 cm clearance above rotor top)
+    "/World/Disc_Brake_Assembly/occurrence_of_hub_and_studs": {
+        "delta_t": [0.0, 0.0, 0.16],
+        "step": "hub",
+    },
+}
+
+
 class StageManager:
     """This class manages the stage and its related events."""
     def __init__(self):
@@ -71,6 +115,25 @@ class StageManager:
         self._is_external_update: bool = False
         self._camera_attrs = {}
         self._subscriptions = []
+
+        # Kinematics & Exploded View state
+        self._rotor_kinematics_enabled: bool = False
+        self._rotor_rpm: float = 120.0
+        self._rotor_current_angle: float = 6.8072
+        self._rotor_base_angle: float = 6.8072
+        self._kinematics_sub = None
+        self._exploded_factor: float = 0.0
+        self._base_transforms: dict = {}
+        self._step_progress: dict = {"bolts": 0.0, "caliper": 0.0, "pads": 0.0, "rotor": 0.0, "hub": 0.0}
+        self._start_step_progress: dict = {"bolts": 0.0, "caliper": 0.0, "pads": 0.0, "rotor": 0.0, "hub": 0.0}
+        self._target_step_progress: dict = {"bolts": 0.0, "caliper": 0.0, "pads": 0.0, "rotor": 0.0, "hub": 0.0}
+
+        # 60 FPS Native smooth animation state
+        self._is_animating: bool = False
+        self._anim_start_time: float = 0.0
+        self._anim_duration: float = 0.8
+        self._anim_start_factor: float = 0.0
+        self._anim_target_factor: float = 0.0
 
         # -- register outgoing events/messages
         outgoing = [
@@ -96,6 +159,11 @@ class StageManager:
             "setMaterialColorResponse",
             "setPrimDisplayColorResponse",
             "executeUsdCodeResponse",
+            # Exploded View and Kinematics responses
+            "setExplodedViewResponse",
+            "getExplodedViewStateResponse",
+            "setRotorKinematicsResponse",
+            "disassembleStepResponse",
         ]
 
         for o in outgoing:
@@ -129,6 +197,11 @@ class StageManager:
             'setMaterialColorRequest': self._on_set_material_color,
             'setPrimDisplayColorRequest': self._on_set_prim_display_color,
             'executeUsdCodeRequest': self._on_execute_usd_code,
+            # Exploded View and Kinematics requests
+            'setExplodedViewRequest': self._on_set_exploded_view,
+            'getExplodedViewStateRequest': self._on_get_exploded_view_state,
+            'setRotorKinematicsRequest': self._on_set_rotor_kinematics,
+            'disassembleStepRequest': self._on_disassemble_step,
         }
 
         ed = get_eventdispatcher()
@@ -993,10 +1066,351 @@ class StageManager:
             payload = {"result": "error", "error": str(e)}
         get_eventdispatcher().dispatch_event("executeUsdCodeResponse", payload=payload)
 
+    def _ensure_base_transforms(self):
+        """Caches resting local translation and rotation for all assembly components."""
+        if self._base_transforms:
+            return
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return
+
+        for prim_path in DISASSEMBLY_OFFSETS.keys():
+            prim = stage.GetPrimAtPath(prim_path)
+            if not prim or not prim.IsValid():
+                continue
+            xformable = UsdGeom.Xformable(prim)
+            if not xformable:
+                continue
+
+            trans_op = None
+            rot_op = None
+            for op in xformable.GetOrderedXformOps():
+                if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                    trans_op = op
+                elif op.GetOpType() == UsdGeom.XformOp.TypeRotateXYZ:
+                    rot_op = op
+
+            if not trans_op:
+                trans_op = xformable.AddTranslateOp()
+            if not rot_op:
+                rot_op = xformable.AddRotateXYZOp()
+
+            t_val = trans_op.Get() or Gf.Vec3d(0.0, 0.0, 0.0)
+            r_val = rot_op.Get() or Gf.Vec3f(0.0, 0.0, 0.0)
+
+            self._base_transforms[prim_path] = {
+                "trans_op": trans_op,
+                "rot_op": rot_op,
+                "base_translate": Gf.Vec3d(t_val[0], t_val[1], t_val[2]),
+                "base_rotate": Gf.Vec3f(r_val[0], r_val[1], r_val[2]),
+            }
+
+        rotor_path = "/World/Disc_Brake_Assembly/occurrence_of_rotor_disc"
+        if rotor_path in self._base_transforms:
+            r_val = self._base_transforms[rotor_path]["base_rotate"]
+            self._rotor_base_angle = float(r_val[2])
+            self._rotor_current_angle = self._rotor_base_angle
+
+    DISASSEMBLY_ORDER = ["bolts", "caliper", "pads", "hub"]
+    ASSEMBLY_ORDER = ["hub", "pads", "caliper", "bolts"]
+
+    def _ensure_update_subscription(self):
+        """Ensures the frame update stream subscription is active for 60 FPS rotor spinning and smooth easing."""
+        if not self._kinematics_sub:
+            self._kinematics_sub = omni.kit.app.get_app().get_update_event_stream().create_subscription_to_pop(
+                self._on_update_stream,
+                name="StageManager:UpdateStream",
+            )
+
+    def _apply_step_transforms(self):
+        """Applies current _step_progress to all cached prim transforms in USD."""
+        if not self._base_transforms:
+            return
+        for prim_path, info in DISASSEMBLY_OFFSETS.items():
+            if prim_path not in self._base_transforms:
+                continue
+            item = self._base_transforms[prim_path]
+            base_t = item["base_translate"]
+            delta_t = info["delta_t"]
+            part_step = info.get("step", "")
+            part_progress = self._step_progress.get(part_step, self._exploded_factor)
+
+            new_t = Gf.Vec3d(
+                base_t[0] + delta_t[0] * part_progress,
+                base_t[1] + delta_t[1] * part_progress,
+                base_t[2] + delta_t[2] * part_progress,
+            )
+            item["trans_op"].Set(new_t)
+
+    def _on_update_stream(self, event: carb.events.IEvent):
+        """Per-frame update callback for both continuous rotor spinning and smooth exploded view easing."""
+        if not self._rotor_kinematics_enabled and not self._is_animating:
+            return
+
+        dt = 1.0 / 60.0
+        if hasattr(event, "payload") and event.payload:
+            if isinstance(event.payload, carb.dictionary.Item):
+                dt = float(event.payload.get_dict().get("dt", dt))
+            elif hasattr(event.payload, "get"):
+                dt = float(event.payload.get("dt", dt))
+
+        # 1. Rotor spinning kinematics
+        if self._rotor_kinematics_enabled:
+            rotor_path = "/World/Disc_Brake_Assembly/occurrence_of_rotor_disc"
+            if rotor_path in self._base_transforms:
+                delta_deg = (self._rotor_rpm * 6.0) * dt
+                self._rotor_current_angle = (self._rotor_current_angle + delta_deg) % 360.0
+                item = self._base_transforms[rotor_path]
+                base_rot = item["base_rotate"]
+                new_rot = Gf.Vec3f(base_rot[0], base_rot[1], float(self._rotor_current_angle))
+                item["rot_op"].Set(new_rot)
+
+        # 2. Smooth exploded view and step assembly interpolation (60 FPS cubic smoothstep)
+        if self._is_animating:
+            now = time.time()
+            elapsed = now - self._anim_start_time
+            t = min(1.0, elapsed / self._anim_duration) if self._anim_duration > 0 else 1.0
+
+            # Smoothstep easing: S(t) = 3t^2 - 2t^3 (zero acceleration at boundaries)
+            ease = t * t * (3.0 - 2.0 * t)
+
+            self._exploded_factor = self._anim_start_factor + (self._anim_target_factor - self._anim_start_factor) * ease
+
+            for k in self._step_progress.keys():
+                s0 = self._start_step_progress.get(k, 0.0)
+                s1 = self._target_step_progress.get(k, 0.0)
+                self._step_progress[k] = s0 + (s1 - s0) * ease
+
+            self._apply_step_transforms()
+
+            if t >= 1.0:
+                self._is_animating = False
+                self._exploded_factor = self._anim_target_factor
+                for k in self._step_progress.keys():
+                    self._step_progress[k] = self._target_step_progress.get(k, 0.0)
+                self._apply_step_transforms()
+
+    def set_exploded_view(self, factor: float, animate: bool = True, duration: float = 0.8):
+        """Interpolates local translation for all assembly components between 0 (assembled) and 1 (fully exploded)."""
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return {"error": "No active USD stage found"}
+
+        self._ensure_base_transforms()
+        factor = max(0.0, min(1.0, float(factor)))
+        duration = max(0.05, float(duration))
+
+        if animate:
+            self._anim_duration = duration
+            self._anim_start_time = time.time()
+            self._anim_start_factor = self._exploded_factor
+            self._anim_target_factor = factor
+            for k in self._step_progress.keys():
+                self._start_step_progress[k] = self._step_progress.get(k, 0.0)
+                self._target_step_progress[k] = factor
+            self._is_animating = True
+            self._ensure_update_subscription()
+        else:
+            self._is_animating = False
+            self._exploded_factor = factor
+            self._anim_target_factor = factor
+            for k in self._step_progress.keys():
+                self._step_progress[k] = factor
+                self._target_step_progress[k] = factor
+            self._apply_step_transforms()
+
+        return {
+            "status": "success",
+            "exploded_factor": factor,
+            "animated": animate,
+            "duration": duration,
+            "step_progress": self._target_step_progress,
+        }
+
+    def get_exploded_view_state(self):
+        """Returns the current exploded factor, step progress, and rotor kinematics state."""
+        return {
+            "exploded_factor": self._exploded_factor,
+            "target_exploded_factor": self._anim_target_factor,
+            "is_animating": self._is_animating,
+            "kinematics_enabled": self._rotor_kinematics_enabled,
+            "rotor_rpm": self._rotor_rpm,
+            "step_progress": self._step_progress,
+            "target_step_progress": self._target_step_progress,
+        }
+
+    def disassemble_step(self, step: str, progress: float = 1.0, animate: bool = True, duration: float = 0.8):
+        """Applies selective disassembly or assembly to a specific component group:
+        'bolts', 'caliper', 'pads', 'hub', 'step_explode', 'step_assemble', 'all', or 'reset'.
+        progress=1.0 explodes the part; progress=0.0 assembles the part back in place.
+        """
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return {"error": "No active USD stage found"}
+
+        self._ensure_base_transforms()
+        duration = max(0.05, float(duration))
+
+        # Support step-by-step sequential explode or assemble
+        if step in ["next_explode", "step_explode", "explode_next"]:
+            target_step = None
+            for s in self.DISASSEMBLY_ORDER:
+                if self._target_step_progress.get(s, 0.0) < 0.9:
+                    target_step = s
+                    break
+            if not target_step:
+                return {"status": "noop", "message": "All components are already fully exploded", "step_progress": self._target_step_progress}
+            step = target_step
+            progress = 1.0
+
+        elif step in ["next_assemble", "step_assemble", "assemble_next"]:
+            target_step = None
+            for s in self.ASSEMBLY_ORDER:
+                if self._target_step_progress.get(s, 0.0) > 0.1:
+                    target_step = s
+                    break
+            if not target_step:
+                return {"status": "noop", "message": "All components are already fully assembled", "step_progress": self._target_step_progress}
+            step = target_step
+            progress = 0.0
+
+        progress = max(0.0, min(1.0, float(progress)))
+
+        target_map = dict(self._target_step_progress)
+        if step == "reset":
+            for k in target_map.keys():
+                target_map[k] = 0.0
+            target_factor = 0.0
+        elif step == "all":
+            for k in target_map.keys():
+                target_map[k] = progress
+            target_factor = progress
+        elif step in target_map:
+            target_map[step] = progress
+            target_factor = max(target_map.values())
+        else:
+            return {
+                "error": f"Unknown disassembly step: '{step}'. Valid steps: 'bolts', 'caliper', 'pads', 'hub', 'all', 'reset', 'step_explode', 'step_assemble'"
+            }
+
+        if animate:
+            self._anim_duration = duration
+            self._anim_start_time = time.time()
+            self._anim_start_factor = self._exploded_factor
+            self._anim_target_factor = target_factor
+            for k in self._step_progress.keys():
+                self._start_step_progress[k] = self._step_progress.get(k, 0.0)
+                self._target_step_progress[k] = target_map.get(k, 0.0)
+            self._is_animating = True
+            self._ensure_update_subscription()
+        else:
+            self._is_animating = False
+            self._exploded_factor = target_factor
+            self._anim_target_factor = target_factor
+            for k in self._step_progress.keys():
+                self._step_progress[k] = target_map.get(k, 0.0)
+                self._target_step_progress[k] = target_map.get(k, 0.0)
+            self._apply_step_transforms()
+
+        return {
+            "status": "success",
+            "step": step,
+            "progress": progress,
+            "action": "disassemble" if progress > 0.5 else "assemble",
+            "animated": animate,
+            "step_progress": self._target_step_progress,
+        }
+
+    def set_rotor_kinematics(self, enabled: bool, rpm: float = 120.0):
+        """Toggles continuous rotation of the rotor disc around its local axle axis."""
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return {"error": "No active USD stage found"}
+
+        self._ensure_base_transforms()
+        self._rotor_kinematics_enabled = bool(enabled)
+        self._rotor_rpm = float(rpm)
+
+        if self._rotor_kinematics_enabled:
+            self._ensure_update_subscription()
+            carb.log_info(f"Rotor kinematics enabled at {self._rotor_rpm} RPM")
+        else:
+            carb.log_info("Rotor kinematics disabled")
+
+        return {
+            "status": "success",
+            "kinematics_enabled": self._rotor_kinematics_enabled,
+            "rpm": self._rotor_rpm,
+        }
+
+    def _on_set_exploded_view(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received setExplodedViewRequest")
+        try:
+            p = _safe_get_payload(event)
+            factor = float(p.get("factor", p.get("explosion_factor", 0.0)))
+            animate = bool(p.get("animate", True))
+            duration = float(p.get("duration", 0.8))
+            res = self.set_exploded_view(factor, animate=animate, duration=duration)
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"setExplodedView handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("setExplodedViewResponse", payload=payload)
+
+    def _on_get_exploded_view_state(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received getExplodedViewStateRequest")
+        try:
+            res = self.get_exploded_view_state()
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"getExplodedViewState handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("getExplodedViewStateResponse", payload=payload)
+
+    def _on_disassemble_step(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received disassembleStepRequest")
+        try:
+            p = _safe_get_payload(event)
+            step = str(p.get("step", p.get("component", "all")))
+            action = p.get("action", None)
+            if action == "assemble":
+                progress = 0.0
+            elif action in ["disassemble", "explode"]:
+                progress = 1.0
+            else:
+                progress = float(p.get("progress", 1.0))
+            animate = bool(p.get("animate", True))
+            duration = float(p.get("duration", 0.8))
+            res = self.disassemble_step(step, progress, animate=animate, duration=duration)
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"disassembleStep handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("disassembleStepResponse", payload=payload)
+
+    def _on_set_rotor_kinematics(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received setRotorKinematicsRequest")
+        try:
+            p = _safe_get_payload(event)
+            enabled = bool(p.get("enabled", True))
+            rpm = float(p.get("rpm", 120.0))
+            res = self.set_rotor_kinematics(enabled, rpm)
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"setRotorKinematics handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("setRotorKinematicsResponse", payload=payload)
+
     def on_shutdown(self):
         """This is called every time the extension is deactivated. It is used
         to clean up the extension state."""
+        # Stop kinematics subscription if active
+        if self._kinematics_sub:
+            self._kinematics_sub = None
+        self._rotor_kinematics_enabled = False
+        self._is_animating = False
         # Reseting the state.
         self._subscriptions.clear()
         self._is_external_update: bool = False
         self._camera_attrs.clear()
+        self._base_transforms.clear()

@@ -47,6 +47,45 @@
             <p id="error-message-text" style="font-size: 12px; max-width: 400px; text-align: center;">Unable to connect to 127.0.0.1</p>
             <button class="btn-secondary" id="retry-stream" style="margin-top: 10px;">Retry Connection</button>
           </div>
+          <!-- Floating Kinematics & Exploded View HUD Control Bar -->
+          <div id="viewport-hud">
+            <div class="hud-panel">
+              <div class="hud-group">
+                <span class="hud-label">💥 Exploded</span>
+                <input type="range" id="explode-slider" min="0" max="100" value="0" class="hud-slider" title="Drag to explode assembly">
+                <span id="explode-value" class="hud-badge">0%</span>
+                <button id="btn-explode" class="hud-btn" title="Animate fully exploded">Explode</button>
+                <button id="btn-assemble" class="hud-btn" title="Animate reassemble">Assemble</button>
+              </div>
+              <div class="hud-divider"></div>
+              <div class="hud-group">
+                <span class="hud-label">⚙️ Rotor</span>
+                <button id="btn-toggle-rotor" class="hud-btn" title="Toggle continuous rotor disc spinning">
+                  <span class="spin-icon">🔄</span> <span id="rotor-status-text">Spin Rotor</span>
+                </button>
+                <select id="rotor-rpm-select" class="hud-select" title="Rotational velocity (RPM)">
+                  <option value="60">60 RPM</option>
+                  <option value="120" selected>120 RPM</option>
+                  <option value="240">240 RPM</option>
+                  <option value="480">480 RPM</option>
+                </select>
+              </div>
+              <div class="hud-divider"></div>
+              <div class="hud-group">
+                <span class="hud-label">🔩 Steps</span>
+                <button id="btn-step-assemble" class="hud-btn" title="Assemble next component in sequence (Hub → Pads → Caliper → Bolts)">
+                  ◀ Assemble Step
+                </button>
+                <button id="btn-step-explode" class="hud-btn" title="Explode next component in sequence (Bolts → Caliper → Pads → Hub)">
+                  Explode Step ▶
+                </button>
+                <button class="hud-step-btn" data-step="bolts" title="Toggle: Explode / Assemble Bolts">Bolts</button>
+                <button class="hud-step-btn" data-step="caliper" title="Toggle: Explode / Assemble Caliper">Caliper</button>
+                <button class="hud-step-btn" data-step="pads" title="Toggle: Explode / Assemble Pads">Pads</button>
+                <button class="hud-step-btn" data-step="hub" title="Toggle: Explode / Assemble Hub & Studs">Hub</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Mechanical AI Copilot Sidebar Drawer -->
@@ -64,6 +103,11 @@
 
           <!-- Quick Suggestion Action Chips -->
           <div class="quick-prompts-bar">
+            <button class="chip-btn" data-prompt="Explode the assembly to 100% so I can inspect the internal components.">💥 Explode View</button>
+            <button class="chip-btn" data-prompt="Reassemble all components of the Disc Brake Assembly back together.">🧩 Reassemble</button>
+            <button class="chip-btn" data-prompt="Start spinning the brake rotor disc at 180 RPM to test kinematics.">🔄 Spin Rotor (180 RPM)</button>
+            <button class="chip-btn" data-prompt="Stop the rotor rotation.">🛑 Stop Rotor</button>
+            <button class="chip-btn" data-prompt="Disassemble the caliper mounting bolts to begin maintenance inspection.">🔩 Disassemble Bolts</button>
             <button class="chip-btn" data-prompt="What is this scene about? Explain the assembly.">🚀 Scene Summary</button>
             <button class="chip-btn" data-prompt="Change the Brake Caliper material Metal_Yellow_Paint to racing red.">🔴 Caliper Racing Red</button>
             <button class="chip-btn" data-prompt="Change the Brake Caliper material Metal_Yellow_Paint to electric blue.">🔵 Caliper Electric Blue</button>
@@ -71,7 +115,6 @@
             <button class="chip-btn" data-prompt="Measure the physical dimensions of the Rotor Disc in millimeters.">📏 Rotor Dimensions</button>
             <button class="chip-btn" data-prompt="Hide the Brake Caliper so I can inspect the brake pads inside.">👁️ Isolate Brake Pads</button>
             <button class="chip-btn" data-prompt="Focus camera on the Brake Caliper and highlight it.">🎥 Focus Caliper</button>
-            <button class="chip-btn" data-prompt="What materials are used across the components in this model?">🎨 Materials</button>
             <button class="chip-btn" data-prompt="Reset the viewport camera to original overview.">🔄 Reset View</button>
           </div>
 

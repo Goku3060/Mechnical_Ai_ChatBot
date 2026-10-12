@@ -19,6 +19,8 @@ The web client renders the Kit viewport as a real-time, low-latency WebRTC video
 - **Autonomous Gemini Flash Copilot**: Natural-language CAD assistant with structured tool calling (`GEMINI_USD_TOOLS`) for live scene inspection, dimensional measurement, and stage modification.
 - **Interactive Part Badges**: CAD components mentioned by the AI Copilot render as interactive chips (`.part-tag`). Clicking any part instantly selects and frames the 3D viewport camera on it.
 - **Real-Time Material & Color Authoring**: Change material finishes (e.g., turning the brake caliper racing red or electric blue, binding anodized aluminum) live on the stage over the WebRTC data channel.
+- **Exploded View & Step Disassembly / Assembly**: 60 FPS smooth server-side cubic easing for full explosion and reset, plus sequential part-by-part disassembly and assembly (caliper bolts, brake pads, caliper housing, wheel hub & studs).
+- **Live Rotor Kinematics (60–480 RPM)**: Omniverse Kit per-frame update loop ticks continuous 60 FPS spinning of the ventilated rotor disc around its local axle axis.
 - **Millimeter Dimensional Analysis**: Authoritative physical measurements computed using `UsdGeom.BBoxCache`.
 - **Dynamic Model Fallback**: Resilient model-switching engine (`gemini-3.8-flash`, `gemini-2.5-flash`, `gemini-1.5-flash`, `gemini-1.5-pro`) to seamlessly handle Google AI rate limits (HTTP 429/503).
 - **One-Click Orchestration Scripts**: Windows batch scripts to build, start, and cleanly terminate both Kit and web services.

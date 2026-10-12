@@ -32,6 +32,20 @@ class MechanicalApp {
     private modal!: HTMLElement;
     private keyInput!: HTMLInputElement;
 
+    // Kinematics & Exploded View HUD Elements
+    private explodeSlider!: HTMLInputElement;
+    private explodeValue!: HTMLElement;
+    private btnExplode!: HTMLButtonElement;
+    private btnAssemble!: HTMLButtonElement;
+    private btnToggleRotor!: HTMLButtonElement;
+    private rotorStatusText!: HTMLElement;
+    private rotorRpmSelect!: HTMLSelectElement;
+
+    // Kinematics & Exploded View State
+    private isRotorRotating = false;
+    private currentExplosionFactor = 0.0;
+    private animatingExplosion = false;
+
     constructor() {
         this.usdClient = new UsdSceneClient();
         this.geminiService = new GeminiService(this.usdClient);
@@ -57,6 +71,15 @@ class MechanicalApp {
         this.aiStatusText = document.getElementById('ai-status-text')!;
         this.modal = document.getElementById('api-key-modal')!;
         this.keyInput = document.getElementById('gemini-key-input') as HTMLInputElement;
+
+        // Kinematics HUD
+        this.explodeSlider = document.getElementById('explode-slider') as HTMLInputElement;
+        this.explodeValue = document.getElementById('explode-value')!;
+        this.btnExplode = document.getElementById('btn-explode') as HTMLButtonElement;
+        this.btnAssemble = document.getElementById('btn-assemble') as HTMLButtonElement;
+        this.btnToggleRotor = document.getElementById('btn-toggle-rotor') as HTMLButtonElement;
+        this.rotorStatusText = document.getElementById('rotor-status-text')!;
+        this.rotorRpmSelect = document.getElementById('rotor-rpm-select') as HTMLSelectElement;
     }
 
     private bindEvents() {
@@ -244,6 +267,195 @@ class MechanicalApp {
                 }
             }
         });
+
+        // Bind Kinematics & Exploded View HUD
+        this.bindKinematicsEvents();
+    }
+
+    private bindKinematicsEvents() {
+        if (!this.explodeSlider) return;
+
+        // Interactive exploded view slider (debounced live scrubbing)
+        let sliderThrottleTimeout: any = null;
+        this.explodeSlider.addEventListener('input', () => {
+            const val = parseInt(this.explodeSlider.value, 10);
+            const factor = val / 100.0;
+            this.currentExplosionFactor = factor;
+            this.explodeValue.textContent = `${val}%`;
+
+            if (!sliderThrottleTimeout) {
+                sliderThrottleTimeout = setTimeout(() => {
+                    sliderThrottleTimeout = null;
+                    this.usdClient.setExplodedView(factor, false).catch(() => {});
+                }, 40);
+            }
+        });
+
+        this.explodeSlider.addEventListener('change', () => {
+            const val = parseInt(this.explodeSlider.value, 10);
+            const factor = val / 100.0;
+            this.usdClient.setExplodedView(factor, false).catch(() => {});
+        });
+
+        // Explode / Assemble quick animate buttons (Native 60 FPS smooth server easing)
+        this.btnExplode?.addEventListener('click', async () => {
+            this.animateSliderTo(100, 800);
+            try {
+                await this.usdClient.setExplodedView(1.0, true, 0.8);
+                document.querySelectorAll('.hud-step-btn').forEach(b => b.classList.add('active'));
+            } catch (err) {
+                console.warn('Explode note:', err);
+            }
+        });
+
+        this.btnAssemble?.addEventListener('click', async () => {
+            this.animateSliderTo(0, 800);
+            try {
+                await this.usdClient.setExplodedView(0.0, true, 0.8);
+                document.querySelectorAll('.hud-step-btn').forEach(b => b.classList.remove('active'));
+            } catch (err) {
+                console.warn('Assemble note:', err);
+            }
+        });
+
+        // Toggle rotor rotation
+        this.btnToggleRotor?.addEventListener('click', async () => {
+            this.isRotorRotating = !this.isRotorRotating;
+            const rpm = parseFloat(this.rotorRpmSelect?.value || '120') || 120;
+
+            if (this.isRotorRotating) {
+                this.btnToggleRotor.classList.add('active');
+                this.rotorStatusText.textContent = `Spinning (${rpm} RPM)`;
+            } else {
+                this.btnToggleRotor.classList.remove('active');
+                this.rotorStatusText.textContent = 'Spin Rotor';
+            }
+
+            try {
+                await this.usdClient.setRotorKinematics(this.isRotorRotating, rpm);
+            } catch (err) {
+                console.warn('Rotor kinematics update note:', err);
+            }
+        });
+
+        // Rotor RPM change
+        this.rotorRpmSelect?.addEventListener('change', async () => {
+            if (this.isRotorRotating) {
+                const rpm = parseFloat(this.rotorRpmSelect.value) || 120;
+                this.rotorStatusText.textContent = `Spinning (${rpm} RPM)`;
+                try {
+                    await this.usdClient.setRotorKinematics(true, rpm);
+                } catch (err) {
+                    console.warn('Rotor RPM update note:', err);
+                }
+            }
+        });
+
+        // Step Assemble button (Assembles next component: Hub → Pads → Caliper → Bolts)
+        document.getElementById('btn-step-assemble')?.addEventListener('click', async () => {
+            try {
+                const res = await this.usdClient.stepAssembleNext(true);
+                if (res?.data?.step) {
+                    const stepBtn = document.querySelector(`.hud-step-btn[data-step="${res.data.step}"]`);
+                    stepBtn?.classList.remove('active');
+                }
+                this.syncExplodeState();
+            } catch (err) {
+                console.warn('Step assemble note:', err);
+            }
+        });
+
+        // Step Explode button (Explodes next component: Bolts → Caliper → Pads → Hub)
+        document.getElementById('btn-step-explode')?.addEventListener('click', async () => {
+            try {
+                const res = await this.usdClient.stepExplodeNext(true);
+                if (res?.data?.step) {
+                    const stepBtn = document.querySelector(`.hud-step-btn[data-step="${res.data.step}"]`);
+                    stepBtn?.classList.add('active');
+                }
+                this.syncExplodeState();
+            } catch (err) {
+                console.warn('Step explode note:', err);
+            }
+        });
+
+        // Individual component toggle buttons (Bolts, Caliper, Pads, Hub)
+        document.querySelectorAll('.hud-step-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const step = btn.getAttribute('data-step');
+                if (!step) return;
+
+                const isCurrentlyExploded = btn.classList.contains('active');
+                const targetProgress = isCurrentlyExploded ? 0.0 : 1.0;
+
+                try {
+                    await this.usdClient.disassembleStep(step, targetProgress, true, 0.8);
+                    if (targetProgress > 0.5) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                    this.syncExplodeState();
+                } catch (err) {
+                    console.warn(`Toggle step ${step} note:`, err);
+                }
+            });
+        });
+    }
+
+    /**
+     * Synchronizes UI HUD state with Kit server exploded view state.
+     */
+    private async syncExplodeState() {
+        try {
+            const state = await this.usdClient.getExplodedViewState();
+            if (state?.data) {
+                const stepProg = state.data.target_step_progress || state.data.step_progress || {};
+                document.querySelectorAll('.hud-step-btn').forEach((btn) => {
+                    const s = btn.getAttribute('data-step');
+                    if (s && stepProg[s] !== undefined) {
+                        if (stepProg[s] > 0.5) {
+                            btn.classList.add('active');
+                        } else {
+                            btn.classList.remove('active');
+                        }
+                    }
+                });
+                const factor = state.data.target_exploded_factor ?? state.data.exploded_factor ?? 0;
+                this.currentExplosionFactor = factor;
+                if (this.explodeSlider) {
+                    this.explodeSlider.value = String(Math.round(factor * 100));
+                }
+                if (this.explodeValue) {
+                    this.explodeValue.textContent = `${Math.round(factor * 100)}%`;
+                }
+            }
+        } catch (_) {}
+    }
+
+    /**
+     * Smoothly eases the UI HUD slider position to match the 60 FPS animation.
+     */
+    private animateSliderTo(targetVal: number, durationMs = 800) {
+        if (!this.explodeSlider || !this.explodeValue) return;
+        const startVal = parseInt(this.explodeSlider.value, 10);
+        const startTime = performance.now();
+
+        const step = (now: number) => {
+            const elapsed = now - startTime;
+            const t = Math.min(1.0, elapsed / durationMs);
+            const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            const current = Math.round(startVal + (targetVal - startVal) * ease);
+
+            this.explodeSlider.value = String(current);
+            this.explodeValue.textContent = `${current}%`;
+            this.currentExplosionFactor = current / 100.0;
+
+            if (t < 1.0) {
+                requestAnimationFrame(step);
+            }
+        };
+        requestAnimationFrame(step);
     }
 
     private checkApiKeyPrompt() {

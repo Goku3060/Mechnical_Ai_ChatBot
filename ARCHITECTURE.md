@@ -213,6 +213,15 @@ sequenceDiagram
 | `setPrimDisplayColorRequest` | `setPrimDisplayColorResponse` | Browser $\leftrightarrow$ Kit | Request: `{ prim_path, color_rgb: [r, g, b] }`<br/>Response: `{ status, prim_path, display_color }` | Sets `primvars:displayColor` attribute directly on target `UsdGeom.Gprim`. |
 | `executeUsdCodeRequest` | `executeUsdCodeResponse` | Browser $\leftrightarrow$ Kit | Request: `{ code: string }`<br/>Response: `{ status, result }` | Executes arbitrary Python OpenUSD code with direct injection of `omni`, `stage`, `Usd`, `UsdGeom`, `UsdShade`, `Gf`, `Sdf`, `Vt`. |
 
+### 4. Exploded View & Kinematics Message Types
+
+| Request Event | Response Event | Direction | Key Payload Attributes | Omniverse Kit Operation |
+|---|---|---|---|---|
+| `setExplodedViewRequest` | `setExplodedViewResponse` | Browser $\leftrightarrow$ Kit | Request: `{ factor: float (0.0 - 1.0) }`<br/>Response: `{ status, exploded_factor, parts_updated, count }` | Linearly interpolates local component translation offsets across the assembly (caliper, mount, bolts, pads, rotor, hub). |
+| `getExplodedViewStateRequest` | `getExplodedViewStateResponse` | Browser $\leftrightarrow$ Kit | Response: `{ exploded_factor, kinematics_enabled, rotor_rpm, step_progress }` | Queries active explosion factor, rotation status, and step disassembly states. |
+| `setRotorKinematicsRequest` | `setRotorKinematicsResponse` | Browser $\leftrightarrow$ Kit | Request: `{ enabled: boolean, rpm?: float }`<br/>Response: `{ status, kinematics_enabled, rpm }` | Subscribes to Omniverse Kit's per-frame update event stream to continuously rotate the brake rotor disc around its axle axis. |
+| `disassembleStepRequest` | `disassembleStepResponse` | Browser $\leftrightarrow$ Kit | Request: `{ step: string, progress?: float }`<br/>Response: `{ status, step, progress, step_progress, updated_count }` | Applies selective disassembly to component subsets (`bolts`, `caliper`, `pads`, `rotor`, `hub`, `all`, or `reset`). |
+
 ---
 
 ## AI Copilot & Function Calling Architecture
@@ -272,6 +281,9 @@ The Copilot is initialized with 11 engineering tools:
 - **`set_prim_display_color`**: Overrides `displayColor` directly on geometry.
 - **`execute_usd_code`**: Runs arbitrary Python OpenUSD code against the live stage.
 - **`highlight_part`**: Visually selects prim in viewport.
+- **`set_exploded_view`**: Smoothly interpolates assembly exploded view from 0.0 (assembled) to 1.0 (fully exploded) with native 60 FPS cubic smoothstep easing on the Kit server to inspect internal mechanics or smoothly reset back together.
+- **`set_rotor_kinematics`**: Controls real-time continuous 60 FPS spinning of the ventilated rotor disc at specified RPM (e.g. 120 RPM).
+- **`disassemble_component`**: Executes targeted maintenance step disassembly or assembly for specific mechanical groups (`bolts`, `caliper`, `pads`, `hub`, `all`, `reset`) or sequential step-by-step disassembly (`step_explode`) and assembly (`step_assemble`).
 
 ### 2. High-Availability Dynamic Model Fallback Engine
 
