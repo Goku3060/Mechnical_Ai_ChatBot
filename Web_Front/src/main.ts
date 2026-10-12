@@ -46,6 +46,31 @@ class MechanicalApp {
     private currentExplosionFactor = 0.0;
     private animatingExplosion = false;
 
+    // Spatial Callouts DOM Elements & State
+    private spatialCalloutsOverlay!: HTMLElement;
+    private calloutLeaderLines!: SVGSVGElement;
+    private calloutPinsContainer!: HTMLElement;
+    private btnToggleCallouts!: HTMLButtonElement;
+    private calloutsStatusText!: HTMLElement;
+    private showCallouts = true;
+    private calloutsTimer: any = null;
+    private cachedCallouts: any[] = [];
+
+    // Bill of Materials (BOM) Drawer DOM Elements & State
+    private bomModal!: HTMLElement;
+    private openBomBtn!: HTMLElement;
+    private closeBomModalBtn!: HTMLElement;
+    private exportBomCsvBtn!: HTMLElement;
+    private exportBomJsonBtn!: HTMLElement;
+    private bomSearchInput!: HTMLInputElement;
+    private bomTableBody!: HTMLElement;
+    private bomMetricItems!: HTMLElement;
+    private bomMetricWeight!: HTMLElement;
+    private bomMetricCost!: HTMLElement;
+    private cachedBomData: any = null;
+    private activeBomCategory = 'all';
+    private bomSearchTerm = '';
+
     constructor() {
         this.usdClient = new UsdSceneClient();
         this.geminiService = new GeminiService(this.usdClient);
@@ -80,6 +105,25 @@ class MechanicalApp {
         this.btnToggleRotor = document.getElementById('btn-toggle-rotor') as HTMLButtonElement;
         this.rotorStatusText = document.getElementById('rotor-status-text')!;
         this.rotorRpmSelect = document.getElementById('rotor-rpm-select') as HTMLSelectElement;
+
+        // Spatial Callouts Layer
+        this.spatialCalloutsOverlay = document.getElementById('spatial-callouts-overlay')!;
+        this.calloutLeaderLines = document.getElementById('callout-leader-lines') as unknown as SVGSVGElement;
+        this.calloutPinsContainer = document.getElementById('callout-pins-container')!;
+        this.btnToggleCallouts = document.getElementById('btn-toggle-callouts') as HTMLButtonElement;
+        this.calloutsStatusText = document.getElementById('callouts-status-text')!;
+
+        // Bill of Materials (BOM) Drawer
+        this.bomModal = document.getElementById('bom-modal')!;
+        this.openBomBtn = document.getElementById('open-bom-btn')!;
+        this.closeBomModalBtn = document.getElementById('close-bom-modal-btn')!;
+        this.exportBomCsvBtn = document.getElementById('export-bom-csv-btn')!;
+        this.exportBomJsonBtn = document.getElementById('export-bom-json-btn')!;
+        this.bomSearchInput = document.getElementById('bom-search-input') as HTMLInputElement;
+        this.bomTableBody = document.getElementById('bom-table-body')!;
+        this.bomMetricItems = document.getElementById('bom-metric-items')!;
+        this.bomMetricWeight = document.getElementById('bom-metric-weight')!;
+        this.bomMetricCost = document.getElementById('bom-metric-cost')!;
     }
 
     private bindEvents() {
@@ -270,6 +314,69 @@ class MechanicalApp {
 
         // Bind Kinematics & Exploded View HUD
         this.bindKinematicsEvents();
+
+        // Bind Callouts Toggle
+        this.btnToggleCallouts?.addEventListener('click', () => {
+            this.showCallouts = !this.showCallouts;
+            if (this.showCallouts) {
+                this.spatialCalloutsOverlay?.classList.remove('hidden');
+                this.btnToggleCallouts?.classList.add('active');
+                if (this.calloutsStatusText) this.calloutsStatusText.textContent = 'Callouts';
+                this.fetchAndRenderCallouts();
+            } else {
+                this.spatialCalloutsOverlay?.classList.add('hidden');
+                this.btnToggleCallouts?.classList.remove('active');
+                if (this.calloutsStatusText) this.calloutsStatusText.textContent = 'Callouts Off';
+            }
+        });
+
+        // Bind Bill of Materials (BOM) Drawer
+        this.openBomBtn?.addEventListener('click', () => {
+            this.bomModal?.classList.add('open');
+            this.fetchAndRenderBOM();
+        });
+
+        this.closeBomModalBtn?.addEventListener('click', () => {
+            this.bomModal?.classList.remove('open');
+        });
+
+        this.bomModal?.addEventListener('click', (e) => {
+            if (e.target === this.bomModal) {
+                this.bomModal.classList.remove('open');
+            }
+        });
+
+        this.exportBomCsvBtn?.addEventListener('click', () => this.exportBomAsCsv());
+        this.exportBomJsonBtn?.addEventListener('click', () => this.exportBomAsJson());
+
+        this.bomSearchInput?.addEventListener('input', () => {
+            this.bomSearchTerm = this.bomSearchInput.value.trim().toLowerCase();
+            this.renderBOMTable();
+        });
+
+        document.querySelectorAll('.bom-filter-tag').forEach((tag) => {
+            tag.addEventListener('click', () => {
+                document.querySelectorAll('.bom-filter-tag').forEach((t) => t.classList.remove('active'));
+                tag.classList.add('active');
+                this.activeBomCategory = tag.getAttribute('data-cat') || 'all';
+                this.renderBOMTable();
+            });
+        });
+
+        this.bomTableBody?.addEventListener('click', async (e) => {
+            const btn = (e.target as HTMLElement).closest('.btn-bom-focus') as HTMLElement;
+            if (btn) {
+                const prim = btn.getAttribute('data-prim');
+                if (prim) {
+                    await this.usdClient.selectPart([prim]);
+                    try {
+                        await this.usdClient.focusPrim(prim, 1.0);
+                    } catch (_) {}
+                    btn.textContent = 'Focused!';
+                    setTimeout(() => { btn.textContent = 'Focus 3D'; }, 1500);
+                }
+            }
+        });
     }
 
     private bindKinematicsEvents() {
@@ -303,6 +410,7 @@ class MechanicalApp {
             try {
                 await this.usdClient.setExplodedView(1.0, true, 0.8);
                 document.querySelectorAll('.hud-step-btn').forEach(b => b.classList.add('active'));
+                setTimeout(() => this.fetchAndRenderCallouts(), 850);
             } catch (err) {
                 console.warn('Explode note:', err);
             }
@@ -313,6 +421,7 @@ class MechanicalApp {
             try {
                 await this.usdClient.setExplodedView(0.0, true, 0.8);
                 document.querySelectorAll('.hud-step-btn').forEach(b => b.classList.remove('active'));
+                setTimeout(() => this.fetchAndRenderCallouts(), 850);
             } catch (err) {
                 console.warn('Assemble note:', err);
             }
@@ -500,6 +609,7 @@ class MechanicalApp {
                     if (message.status === EventStatus.SUCCESS) {
                         this.streamConnected = true;
                         this.updateStreamStatus('connected', 'Live 3D Stream Active');
+                        this.startCalloutsLoop();
                     } else if (message.status === EventStatus.ERROR) {
                         this.streamConnected = false;
                         this.updateStreamStatus('error', message.info || 'Connection refused. Is Kit running?');
@@ -653,8 +763,209 @@ class MechanicalApp {
 
         return html;
     }
+
+    /**
+     * Starts background polling for spatial callout positions to track viewport camera movement.
+     */
+    private startCalloutsLoop() {
+        if (this.calloutsTimer) clearInterval(this.calloutsTimer);
+        // Initial fetch
+        setTimeout(() => this.fetchAndRenderCallouts(), 600);
+        // Periodic sync every 2.5 seconds
+        this.calloutsTimer = setInterval(() => {
+            if (this.showCallouts && this.streamConnected && !this.animatingExplosion) {
+                this.fetchAndRenderCallouts();
+            }
+        }, 2500);
+    }
+
+    /**
+     * Queries Kit server for 3D bounding centers projected to screen coordinates.
+     */
+    public async fetchAndRenderCallouts() {
+        if (!this.showCallouts || !this.streamConnected) return;
+        try {
+            const res = await this.usdClient.getSpatialCallouts();
+            if (res?.data?.callouts) {
+                this.cachedCallouts = res.data.callouts;
+                this.renderSpatialCallouts(this.cachedCallouts);
+            }
+        } catch (err) {
+            console.warn('Callouts fetch note:', err);
+        }
+    }
+
+    /**
+     * Renders floating numbered pins and leader lines over the 3D viewport.
+     */
+    private renderSpatialCallouts(callouts: any[]) {
+        if (!this.calloutPinsContainer || !this.calloutLeaderLines) return;
+
+        // Clear existing callout elements
+        this.calloutPinsContainer.innerHTML = '';
+        this.calloutLeaderLines.innerHTML = '';
+
+        callouts.forEach((c) => {
+            if (c.visible === false || c.screen_x_pct < 0 || c.screen_x_pct > 100) return;
+
+            const x = c.screen_x_pct;
+            const y = c.screen_y_pct;
+
+            // Pin element
+            const pin = document.createElement('div');
+            pin.className = 'spatial-callout-pin';
+            pin.setAttribute('data-prim', c.prim_path);
+            pin.style.left = `${x}%`;
+            pin.style.top = `${y}%`;
+
+            pin.innerHTML = `
+                <div class="pin-marker">${c.item_no}</div>
+                <div class="pin-tag">
+                    <span class="pin-name">${c.name}</span>
+                    <span class="pin-sub">${c.part_number} • $${c.unit_price?.toFixed(2)}</span>
+                </div>
+                <div class="pin-tooltip-card">
+                    <div style="font-weight: 700; color: #fff; margin-bottom: 2px;">Item #${c.item_no}: ${c.name}</div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Part No:</span><span class="tooltip-spec-val" style="color: var(--cyan-accent);">${c.part_number}</span></div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Category:</span><span class="tooltip-spec-val">${c.category}</span></div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Material:</span><span class="tooltip-spec-val">${c.material}</span></div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Torque:</span><span class="tooltip-spec-val" style="color: #fbbf24;">${c.torque_nm}</span></div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Weight:</span><span class="tooltip-spec-val">${c.weight_kg} kg</span></div>
+                    <div class="tooltip-spec-row"><span class="tooltip-spec-label">Unit Cost:</span><span class="tooltip-spec-val" style="color: #34d399;">$${c.unit_price?.toFixed(2)}</span></div>
+                </div>
+            `;
+
+            // Clicking pin selects the component in 3D and highlights it
+            pin.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                console.log(`Pin #${c.item_no} clicked: ${c.name} (${c.prim_path})`);
+                await this.usdClient.selectPart([c.prim_path]);
+                try {
+                    await this.usdClient.focusPrim(c.prim_path, 1.0);
+                } catch (_) {}
+                pin.classList.add('active');
+                setTimeout(() => pin.classList.remove('active'), 1600);
+            });
+
+            this.calloutPinsContainer.appendChild(pin);
+        });
+    }
+
+    /**
+     * Fetches authoritative Bill of Materials (BOM) from the Kit server.
+     */
+    public async fetchAndRenderBOM() {
+        try {
+            const res = await this.usdClient.getBillOfMaterials();
+            if (res?.data) {
+                this.cachedBomData = res.data;
+                if (this.bomMetricItems) this.bomMetricItems.textContent = `${res.data.total_items} Parts`;
+                if (this.bomMetricWeight) this.bomMetricWeight.textContent = `${res.data.total_weight_kg} kg`;
+                if (this.bomMetricCost) this.bomMetricCost.textContent = `$${res.data.total_cost_usd?.toFixed(2)}`;
+                this.renderBOMTable();
+            }
+        } catch (err) {
+            console.warn('BOM fetch note:', err);
+        }
+    }
+
+    /**
+     * Renders filtered rows in the BOM data table.
+     */
+    private renderBOMTable() {
+        if (!this.bomTableBody || !this.cachedBomData?.items) return;
+
+        const items: any[] = this.cachedBomData.items;
+        const filtered = items.filter((it) => {
+            // Category filter
+            if (this.activeBomCategory !== 'all' && it.category !== this.activeBomCategory) {
+                return false;
+            }
+            // Search query filter
+            if (this.bomSearchTerm) {
+                const q = this.bomSearchTerm;
+                const matchName = it.name?.toLowerCase().includes(q);
+                const matchNum = it.part_number?.toLowerCase().includes(q);
+                const matchMat = it.material?.toLowerCase().includes(q);
+                const matchCat = it.category?.toLowerCase().includes(q);
+                if (!matchName && !matchNum && !matchMat && !matchCat) return false;
+            }
+            return true;
+        });
+
+        this.bomTableBody.innerHTML = filtered.map((it) => {
+            const dimStr = it.dimensions_mm?.formatted || '180 x 180 x 28 mm';
+            return `
+                <tr>
+                    <td style="text-align: center;"><span class="bom-item-badge">${it.item_no}</span></td>
+                    <td>
+                        <div class="bom-part-name">
+                            <span>${it.name}</span>
+                        </div>
+                    </td>
+                    <td><span class="bom-part-num">${it.part_number}</span></td>
+                    <td><span class="bom-cat-pill">${it.category}</span></td>
+                    <td>
+                        <div class="bom-material-text">${it.material}</div>
+                        <div class="bom-material-spec">${it.material_spec}</div>
+                    </td>
+                    <td><span class="bom-dim-text">${dimStr}</span></td>
+                    <td><span class="bom-torque-pill">${it.torque_nm}</span></td>
+                    <td style="text-align: right; font-weight: 600;">${it.weight_kg} kg</td>
+                    <td style="text-align: right;"><span class="bom-price-text">$${it.unit_price?.toFixed(2)}</span></td>
+                    <td style="text-align: center;">
+                        <button class="btn-bom-focus" data-prim="${it.prim_path}">Focus 3D</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Exports the authoritative BOM data as a CSV spreadsheet.
+     */
+    private exportBomAsCsv() {
+        if (!this.cachedBomData?.items) return;
+        const headers = ['Item No', 'Component Name', 'Part Number', 'Category', 'Material', 'Material Spec', 'CAD Dimensions (mm)', 'Torque Spec', 'Weight (kg)', 'Unit Price (USD)', 'Stock Status'];
+        const rows = this.cachedBomData.items.map((it: any) => [
+            it.item_no,
+            `"${it.name}"`,
+            `"${it.part_number}"`,
+            `"${it.category}"`,
+            `"${it.material}"`,
+            `"${it.material_spec}"`,
+            `"${it.dimensions_mm?.formatted || ''}"`,
+            `"${it.torque_nm}"`,
+            it.weight_kg,
+            it.unit_price,
+            `"${it.stock_status}"`
+        ]);
+        const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r: any) => r.join(','))].join('\n');
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', 'Disc_Brake_Assembly_BOM.csv');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    /**
+     * Exports the authoritative BOM data as formatted JSON.
+     */
+    private exportBomAsJson() {
+        if (!this.cachedBomData) return;
+        const jsonStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(this.cachedBomData, null, 2));
+        const link = document.createElement('a');
+        link.setAttribute('href', jsonStr);
+        link.setAttribute('download', 'Disc_Brake_Assembly_BOM.json');
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
 }
 
 // Start Application
 const app = new MechanicalApp();
 void app.initialize();
+

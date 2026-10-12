@@ -273,6 +273,14 @@ export const GEMINI_USD_TOOLS = [
             },
             required: ['step']
         }
+    },
+    {
+        name: 'get_bill_of_materials',
+        description: 'Retrieves the complete authoritative Bill of Materials (BOM) for the Disc Brake Assembly, including item numbers, part numbers, engineering categories, alloys/materials, ASTM/SAE specs, torque specifications (N·m), unit prices, quantities, stock status, weights (kg), physical bounding dimensions (mm), and assembly totals (total weight 21.19 kg, total price $552.00, 8 parts). Call this whenever the user asks about the bill of materials, parts list, specs, alloys, bolt torque ratings, part costs, weight, or inventory status.',
+        parameters: {
+            type: 'OBJECT',
+            properties: {}
+        }
     }
 ];
 
@@ -302,8 +310,12 @@ YOU HAVE FULL READ AND WRITE ACCESS TO THE LIVE USD STAGE:
    - When the user asks to assemble or install specific parts (e.g. "Assemble the caliper", "Put the brake pads back", "Assemble the hub"), call 'disassemble_component' with step ('bolts', 'caliper', 'pads', 'hub') and action='assemble' (or progress=0.0).
    - When the user asks to spin, rotate, or simulate rotation of the brake rotor disc, call 'set_rotor_kinematics' with enabled=true and rpm (default 120).
 5. Physical Dimensions: Call get_part_dimensions for authoritative millimeter (mm) measurements.
-6. Component Isolation: Call set_part_visibility with visible=false to hide occluding parts, or call focus_camera_on_part to frame the camera.
-7. Present technical answers with clean markdown: bold part names, bulleted dimensions in mm, and confirmation of applied material or kinematic changes.`;
+6. Bill of Materials (BOM) & Specifications:
+   - When the user asks about the parts list, specs, alloys, fastener torque ratings, pricing, weights, or total assembly mass, call 'get_bill_of_materials'.
+   - Ground your answers in the authoritative engineering BOM: 8 components total, 21.19 kg assembly mass, $552.00 assembly cost.
+   - List key specifications cleanly: Item #, Part Number, Material Alloy, Torque Spec (e.g. 115 N·m for Caliper Mounting Bolts, 35 N·m for Caliper Slide Pins, 140 N·m for Wheel Lug Nuts), and Unit Price.
+7. Component Isolation: Call set_part_visibility with visible=false to hide occluding parts, or call focus_camera_on_part to frame the camera.
+8. Present technical answers with clean markdown: bold part names, bulleted dimensions in mm, and confirmation of applied material or kinematic changes.`;
 
     constructor(usdClient: UsdSceneClient) {
         this.usdClient = usdClient;
@@ -396,6 +408,9 @@ YOU HAVE FULL READ AND WRITE ACCESS TO THE LIVE USD STAGE:
                 else if (progress === undefined) progress = 1.0;
                 return await this.usdClient.disassembleStep(args?.step || 'all', progress, true, 0.8, action);
             }
+
+            case 'get_bill_of_materials':
+                return await this.usdClient.getBillOfMaterials();
 
             default:
                 throw new Error(`Unknown tool: ${name}`);

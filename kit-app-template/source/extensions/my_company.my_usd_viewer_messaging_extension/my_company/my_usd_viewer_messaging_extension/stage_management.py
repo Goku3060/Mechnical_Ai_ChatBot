@@ -108,6 +108,115 @@ DISASSEMBLY_OFFSETS = {
 }
 
 
+BILL_OF_MATERIALS_SPEC = {
+    "/World/Disc_Brake_Assembly/occurrence_of_Brake_Caliper": {
+        "item_no": 1,
+        "name": "Twin-Piston Brake Caliper",
+        "part_number": "OEM-BRK-CAL-4092",
+        "category": "Hydraulics",
+        "material": "6061-T6 Billet Aluminum",
+        "material_spec": "ASTM B221 / High-Temp Lacquer",
+        "torque_nm": "35 N·m (Slide Pins)",
+        "qty": 1,
+        "unit_price": 185.00,
+        "stock_status": "In Stock",
+        "weight_kg": 4.85,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_Caliper_Mount": {
+        "item_no": 2,
+        "name": "Caliper Mounting Bracket",
+        "part_number": "OEM-BRK-MNT-1084",
+        "category": "Structural",
+        "material": "Ductile Cast Iron",
+        "material_spec": "ASTM A536 65-45-12 / Anodized",
+        "torque_nm": "115 N·m (Knuckle Mount)",
+        "qty": 1,
+        "unit_price": 65.00,
+        "stock_status": "In Stock",
+        "weight_kg": 2.90,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_brake_pads": {
+        "item_no": 3,
+        "name": "Inboard Brake Pad",
+        "part_number": "OEM-BRK-PAD-8812-IN",
+        "category": "Friction",
+        "material": "Ceramic Composite Compound",
+        "material_spec": "SAE J661 / Powder Coated Steel Backing",
+        "torque_nm": "N/A (Floating in Bracket)",
+        "qty": 1,
+        "unit_price": 42.50,
+        "stock_status": "In Stock",
+        "weight_kg": 0.85,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_brake_pads_001": {
+        "item_no": 4,
+        "name": "Outboard Brake Pad",
+        "part_number": "OEM-BRK-PAD-8812-OUT",
+        "category": "Friction",
+        "material": "Ceramic Composite Compound",
+        "material_spec": "SAE J661 / Powder Coated Steel Backing",
+        "torque_nm": "N/A (Floating in Bracket)",
+        "qty": 1,
+        "unit_price": 42.50,
+        "stock_status": "In Stock",
+        "weight_kg": 0.85,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_rotor_disc": {
+        "item_no": 5,
+        "name": "Ventilated Rotor Disc",
+        "part_number": "OEM-BRK-ROT-3120",
+        "category": "Rotational Heat Sink",
+        "material": "Class 30 Gray Cast Iron",
+        "material_spec": "SAE J431 G3000 / Dynamic Balanced",
+        "torque_nm": "N/A (Axle Hub Centered)",
+        "qty": 1,
+        "unit_price": 110.00,
+        "stock_status": "In Stock",
+        "weight_kg": 7.40,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_hub_and_studs": {
+        "item_no": 6,
+        "name": "Wheel Hub & Studs Assembly",
+        "part_number": "OEM-WHL-HUB-5011",
+        "category": "Drive Interface",
+        "material": "Forged 4140 Chromoly Steel",
+        "material_spec": "AISI 4140 Quenched & Tempered",
+        "torque_nm": "140 N·m (Lug Nuts)",
+        "qty": 1,
+        "unit_price": 95.00,
+        "stock_status": "In Stock",
+        "weight_kg": 4.10,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_Mounting_Bolt": {
+        "item_no": 7,
+        "name": "Mounting Bolt (Upper)",
+        "part_number": "OEM-FST-BLT-M12-01",
+        "category": "Fastener",
+        "material": "Grade 10.9 High-Tensile Steel",
+        "material_spec": "ISO 898-1 / Zinc Flake Coated",
+        "torque_nm": "115 N·m",
+        "qty": 1,
+        "unit_price": 6.00,
+        "stock_status": "In Stock",
+        "weight_kg": 0.12,
+    },
+    "/World/Disc_Brake_Assembly/occurrence_of_Mounting_Bolt_001": {
+        "item_no": 8,
+        "name": "Mounting Bolt (Lower)",
+        "part_number": "OEM-FST-BLT-M12-02",
+        "category": "Fastener",
+        "material": "Grade 10.9 High-Tensile Steel",
+        "material_spec": "ISO 898-1 / Zinc Flake Coated",
+        "torque_nm": "115 N·m",
+        "qty": 1,
+        "unit_price": 6.00,
+        "stock_status": "In Stock",
+        "weight_kg": 0.12,
+    },
+}
+
+
+
 class StageManager:
     """This class manages the stage and its related events."""
     def __init__(self):
@@ -164,6 +273,9 @@ class StageManager:
             "getExplodedViewStateResponse",
             "setRotorKinematicsResponse",
             "disassembleStepResponse",
+            # Spatial Callouts & BOM responses
+            "getBillOfMaterialsResponse",
+            "getSpatialCalloutsResponse",
         ]
 
         for o in outgoing:
@@ -202,6 +314,9 @@ class StageManager:
             'getExplodedViewStateRequest': self._on_get_exploded_view_state,
             'setRotorKinematicsRequest': self._on_set_rotor_kinematics,
             'disassembleStepRequest': self._on_disassemble_step,
+            # Spatial Callouts & BOM requests
+            'getBillOfMaterialsRequest': self._on_get_bill_of_materials,
+            'getSpatialCalloutsRequest': self._on_get_spatial_callouts,
         }
 
         ed = get_eventdispatcher()
@@ -1400,6 +1515,159 @@ class StageManager:
             carb.log_error(f"setRotorKinematics handler failed: {traceback.format_exc()}")
             payload = {"result": "error", "error": str(e)}
         get_eventdispatcher().dispatch_event("setRotorKinematicsResponse", payload=payload)
+
+    def get_bill_of_materials(self):
+        """Returns the authoritative engineering Bill of Materials (BOM) with live bounding box dimensions."""
+        stage = omni.usd.get_context().get_stage()
+        meters_per_unit = UsdGeom.GetStageMetersPerUnit(stage) if stage else 0.01
+        scale_to_mm = meters_per_unit * 1000.0
+
+        items = []
+        total_cost = 0.0
+        total_weight = 0.0
+        total_qty = 0
+
+        bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]) if stage else None
+
+        for prim_path, spec in BILL_OF_MATERIALS_SPEC.items():
+            item_data = dict(spec)
+            item_data["prim_path"] = prim_path
+
+            # Enrich with live bounding box dimensions in mm if prim exists
+            if stage and bbox_cache:
+                prim = stage.GetPrimAtPath(prim_path)
+                if prim and prim.IsValid():
+                    try:
+                        bbox = bbox_cache.ComputeWorldBound(prim)
+                        size = bbox.ComputeAlignedRange().GetSize()
+                        item_data["dimensions_mm"] = {
+                            "width_x": round(size[0] * scale_to_mm, 1),
+                            "height_y": round(size[1] * scale_to_mm, 1),
+                            "depth_z": round(size[2] * scale_to_mm, 1),
+                            "formatted": f"{round(size[0]*scale_to_mm, 1)} x {round(size[1]*scale_to_mm, 1)} x {round(size[2]*scale_to_mm, 1)} mm"
+                        }
+                    except Exception:
+                        item_data["dimensions_mm"] = None
+                else:
+                    item_data["dimensions_mm"] = None
+            else:
+                item_data["dimensions_mm"] = None
+
+            total_cost += item_data["unit_price"] * item_data["qty"]
+            total_weight += item_data["weight_kg"] * item_data["qty"]
+            total_qty += item_data["qty"]
+            items.append(item_data)
+
+        items.sort(key=lambda x: x["item_no"])
+
+        return {
+            "assembly_name": "Disc Brake Assembly",
+            "root_prim": "/World/Disc_Brake_Assembly",
+            "total_items": len(items),
+            "total_qty": total_qty,
+            "total_weight_kg": round(total_weight, 2),
+            "total_cost_usd": round(total_cost, 2),
+            "currency": "USD",
+            "certification": "ISO/TS 16949 / SAE J431 Compliant",
+            "items": items,
+        }
+
+    def get_spatial_callouts(self):
+        """Computes live 3D bounding centers of components and projects them to screen percentages (0% to 100%)."""
+        stage = omni.usd.get_context().get_stage()
+        if not stage:
+            return {"error": "No active USD stage found", "callouts": []}
+
+        cam_path = get_active_viewport_camera_string()
+        cam_prim = stage.GetPrimAtPath(cam_path) if cam_path else None
+        if not cam_prim or not cam_prim.IsValid():
+            cam_path = "/World/Camera"
+            cam_prim = stage.GetPrimAtPath(cam_path)
+
+        if not cam_prim or not cam_prim.IsValid():
+            return {"error": "No valid camera found", "callouts": []}
+
+        cam_geom = UsdGeom.Camera(cam_prim)
+        fl = cam_geom.GetFocalLengthAttr().Get() if cam_geom.GetFocalLengthAttr().IsValid() else 18.15
+        hap = cam_geom.GetHorizontalApertureAttr().Get() if cam_geom.GetHorizontalApertureAttr().IsValid() else 20.95
+        vap = cam_geom.GetVerticalApertureAttr().Get() if cam_geom.GetVerticalApertureAttr().IsValid() else 15.29
+
+        cam_xform = UsdGeom.Xformable(cam_prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+        inv_cam = cam_xform.GetInverse()
+
+        bbox_cache = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+
+        callouts = []
+        for prim_path, spec in BILL_OF_MATERIALS_SPEC.items():
+            prim = stage.GetPrimAtPath(prim_path)
+            if not prim or not prim.IsValid():
+                continue
+
+            try:
+                b = bbox_cache.ComputeWorldBound(prim).ComputeAlignedRange()
+                min_pt, max_pt = b.GetMin(), b.GetMax()
+                center = [(min_pt[i] + max_pt[i]) / 2.0 for i in range(3)]
+
+                p_cam = inv_cam.Transform(Gf.Vec3d(*center))
+                x_cam, y_cam, z_cam = p_cam[0], p_cam[1], p_cam[2]
+                depth = -z_cam
+
+                if depth > 0.01:
+                    x_film = (x_cam / depth) * (fl / hap)
+                    y_film = (y_cam / depth) * (fl / vap)
+                    u_pct = round(50.0 + x_film * 100.0, 2)
+                    v_pct = round(50.0 - y_film * 100.0, 2)
+                    visible = (0.0 <= u_pct <= 100.0) and (0.0 <= v_pct <= 100.0)
+                else:
+                    u_pct, v_pct, visible = 50.0, 50.0, False
+
+                callouts.append({
+                    "item_no": spec["item_no"],
+                    "name": spec["name"],
+                    "part_number": spec["part_number"],
+                    "category": spec["category"],
+                    "material": spec["material"],
+                    "unit_price": spec["unit_price"],
+                    "weight_kg": spec["weight_kg"],
+                    "torque_nm": spec["torque_nm"],
+                    "prim_path": prim_path,
+                    "screen_x_pct": u_pct,
+                    "screen_y_pct": v_pct,
+                    "depth_m": round(depth, 3),
+                    "visible": visible,
+                    "world_pos": [round(c, 4) for c in center],
+                })
+            except Exception as e:
+                carb.log_warn(f"Failed to project spatial callout for {prim_path}: {e}")
+
+        callouts.sort(key=lambda x: x["item_no"])
+
+        return {
+            "status": "success",
+            "camera_path": cam_path,
+            "callouts": callouts,
+            "exploded_factor": self._exploded_factor
+        }
+
+    def _on_get_bill_of_materials(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received getBillOfMaterialsRequest")
+        try:
+            res = self.get_bill_of_materials()
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"getBillOfMaterials handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("getBillOfMaterialsResponse", payload=payload)
+
+    def _on_get_spatial_callouts(self, event: carb.events.IEvent) -> None:
+        carb.log_info("Received getSpatialCalloutsRequest")
+        try:
+            res = self.get_spatial_callouts()
+            payload = {"result": "success", "data": res}
+        except Exception as e:
+            carb.log_error(f"getSpatialCallouts handler failed: {traceback.format_exc()}")
+            payload = {"result": "error", "error": str(e)}
+        get_eventdispatcher().dispatch_event("getSpatialCalloutsResponse", payload=payload)
 
     def on_shutdown(self):
         """This is called every time the extension is deactivated. It is used

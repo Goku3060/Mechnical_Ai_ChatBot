@@ -265,4 +265,18 @@ export class UsdSceneClient {
     public async resetAssembly(animate = true, duration = 0.8): Promise<any> {
         return this.setExplodedView(0.0, animate, duration);
     }
+
+    /**
+     * Retrieves the authoritative engineering Bill of Materials (BOM) including live dimensions, materials, and pricing.
+     */
+    public async getBillOfMaterials(): Promise<any> {
+        return this.request('getBillOfMaterialsRequest', 'getBillOfMaterialsResponse');
+    }
+
+    /**
+     * Computes real-time 3D bounding centers of components projected into screen percentage coordinates (0% to 100%).
+     */
+    public async getSpatialCallouts(): Promise<any> {
+        return this.request('getSpatialCalloutsRequest', 'getSpatialCalloutsResponse');
+    }
 }

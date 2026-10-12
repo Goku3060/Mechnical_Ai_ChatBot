@@ -22,6 +22,9 @@
             <span class="status-dot connecting" id="status-dot"></span>
             <span id="status-text">Connecting to Kit...</span>
           </div>
+          <button class="btn-secondary" id="open-bom-btn">
+            📋 <span>Bill of Materials</span>
+          </button>
           <button class="btn-secondary" id="open-key-modal">
             🔑 <span>Gemini Key</span>
           </button>
@@ -34,6 +37,12 @@
         <section id="stream-container">
           <video id="remote-video" playsinline autoplay></video>
           <audio id="remote-audio" muted></audio>
+
+          <!-- Interactive 3D Spatial Callouts Layer -->
+          <div id="spatial-callouts-overlay">
+            <svg id="callout-leader-lines"></svg>
+            <div id="callout-pins-container"></div>
+          </div>
 
           <!-- Overlay State Screens -->
           <div id="loading-stream-message">
@@ -84,6 +93,12 @@
                 <button class="hud-step-btn" data-step="pads" title="Toggle: Explode / Assemble Pads">Pads</button>
                 <button class="hud-step-btn" data-step="hub" title="Toggle: Explode / Assemble Hub & Studs">Hub</button>
               </div>
+              <div class="hud-divider"></div>
+              <div class="hud-group">
+                <button id="btn-toggle-callouts" class="hud-btn active" title="Toggle 3D spatial callout pins">
+                  🏷️ <span id="callouts-status-text">Callouts</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -103,6 +118,8 @@
 
           <!-- Quick Suggestion Action Chips -->
           <div class="quick-prompts-bar">
+            <button class="chip-btn" data-prompt="Show me the full Bill of Materials (BOM) for this Disc Brake Assembly with part specs, materials, and costs.">📋 Assembly BOM</button>
+            <button class="chip-btn" data-prompt="What are the torque specifications for all fasteners and bolts in this assembly?">🔧 Torque Specs</button>
             <button class="chip-btn" data-prompt="Explode the assembly to 100% so I can inspect the internal components.">💥 Explode View</button>
             <button class="chip-btn" data-prompt="Reassemble all components of the Disc Brake Assembly back together.">🧩 Reassemble</button>
             <button class="chip-btn" data-prompt="Start spinning the brake rotor disc at 180 RPM to test kinematics.">🔄 Spin Rotor (180 RPM)</button>
@@ -198,6 +215,89 @@
             <button type="button" class="btn-primary" id="save-key-btn">
               Save & Activate
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bill of Materials (BOM) Slide-out Drawer / Modal -->
+      <div class="modal-overlay" id="bom-modal">
+        <div class="bom-drawer">
+          <div class="bom-drawer-header">
+            <div class="bom-header-info">
+              <div class="bom-icon-badge">📋</div>
+              <div>
+                <h2 class="bom-title">Bill of Materials (BOM)</h2>
+                <p class="bom-subtitle">Disc_Brake_Assembly.usd • Engineering Parts Specification & Costs</p>
+              </div>
+            </div>
+            <div class="bom-header-actions">
+              <button class="btn-secondary" id="export-bom-csv-btn" title="Download BOM as CSV spreadsheet">📥 Export CSV</button>
+              <button class="btn-secondary" id="export-bom-json-btn" title="Download BOM as JSON data">💾 Export JSON</button>
+              <button class="btn-secondary" id="close-bom-modal-btn" style="padding: 4px 10px; font-size: 16px;">✕</button>
+            </div>
+          </div>
+
+          <!-- BOM Metrics Summary Cards -->
+          <div class="bom-metrics-row">
+            <div class="bom-metric-card">
+              <span class="metric-label">TOTAL COMPONENTS</span>
+              <span class="metric-value" id="bom-metric-items">8 Parts</span>
+              <span class="metric-sub">100% CAD Modeled</span>
+            </div>
+            <div class="bom-metric-card">
+              <span class="metric-label">TOTAL WEIGHT</span>
+              <span class="metric-value" id="bom-metric-weight">21.19 kg</span>
+              <span class="metric-sub">Dry Mass (without fluid)</span>
+            </div>
+            <div class="bom-metric-card">
+              <span class="metric-label">TOTAL ASSEMBLY COST</span>
+              <span class="metric-value highlight" id="bom-metric-cost">$552.00</span>
+              <span class="metric-sub">OEM List Price</span>
+            </div>
+            <div class="bom-metric-card">
+              <span class="metric-label">CERTIFICATION / SPEC</span>
+              <span class="metric-value" style="font-size: 13px; color: var(--nvidia-green);">SAE J431 / Grade 10.9</span>
+              <span class="metric-sub">ISO/TS 16949 Certified</span>
+            </div>
+          </div>
+
+          <!-- Search & Filter Controls -->
+          <div class="bom-filter-bar">
+            <div class="bom-search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="bom-search-input" placeholder="Filter by part name, part number, alloy, or category..." />
+            </div>
+            <div class="bom-filter-tags">
+              <button class="bom-filter-tag active" data-cat="all">All (8)</button>
+              <button class="bom-filter-tag" data-cat="Hydraulics">Hydraulics</button>
+              <button class="bom-filter-tag" data-cat="Friction">Friction</button>
+              <button class="bom-filter-tag" data-cat="Structural">Structural</button>
+              <button class="bom-filter-tag" data-cat="Fastener">Fasteners</button>
+              <button class="bom-filter-tag" data-cat="Drive Interface">Drive Interface</button>
+            </div>
+          </div>
+
+          <!-- BOM Interactive Data Table -->
+          <div class="bom-table-container">
+            <table class="bom-table" id="bom-data-table">
+              <thead>
+                <tr>
+                  <th style="width: 44px; text-align: center;">Item #</th>
+                  <th>Component Description</th>
+                  <th>Part Number</th>
+                  <th>Category</th>
+                  <th>Material Alloy & Specification</th>
+                  <th>CAD Dimensions (mm)</th>
+                  <th>Torque Rating</th>
+                  <th style="text-align: right;">Weight</th>
+                  <th style="text-align: right;">Unit Price</th>
+                  <th style="text-align: center; width: 70px;">3D Focus</th>
+                </tr>
+              </thead>
+              <tbody id="bom-table-body">
+                <!-- Populated dynamically via USD Scene API -->
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

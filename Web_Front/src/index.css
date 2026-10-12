@@ -793,3 +793,525 @@ body {
     height: 20px;
     background: rgba(255, 255, 255, 0.12);
 }
+
+/* ==========================================================================
+   Interactive 3D Spatial Callouts Layer
+   ========================================================================== */
+#spatial-callouts-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 12;
+    overflow: hidden;
+    transition: opacity 0.25s ease;
+}
+
+#spatial-callouts-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+#callout-leader-lines {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.callout-line {
+    stroke: var(--nvidia-green);
+    stroke-width: 1.5;
+    stroke-dasharray: 4 2;
+    opacity: 0.75;
+    filter: drop-shadow(0 0 3px var(--nvidia-green));
+    transition: stroke 0.2s ease, opacity 0.2s ease;
+}
+
+.callout-line.highlighted {
+    stroke: var(--cyan-accent);
+    stroke-width: 2.2;
+    stroke-dasharray: none;
+    opacity: 1;
+    filter: drop-shadow(0 0 6px var(--cyan-accent));
+}
+
+#callout-pins-container {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.spatial-callout-pin {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+    user-select: none;
+    z-index: 15;
+}
+
+.spatial-callout-pin:hover {
+    transform: translate(-50%, -50%) scale(1.08);
+    z-index: 25;
+}
+
+.pin-marker {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(10, 14, 22, 0.92);
+    border: 2px solid var(--nvidia-green);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 12px var(--nvidia-green-glow), 0 2px 8px rgba(0, 0, 0, 0.8);
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.spatial-callout-pin:hover .pin-marker,
+.spatial-callout-pin.active .pin-marker {
+    background: var(--nvidia-green);
+    color: #000;
+    border-color: #fff;
+    box-shadow: 0 0 16px var(--nvidia-green);
+}
+
+.pin-tag {
+    background: rgba(13, 18, 28, 0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 4px 9px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.spatial-callout-pin:hover .pin-tag {
+    border-color: var(--nvidia-green);
+    background: rgba(18, 26, 40, 0.96);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 12px var(--nvidia-green-glow);
+}
+
+.pin-name {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pin-sub {
+    font-size: 9.5px;
+    color: var(--cyan-accent);
+    font-family: 'JetBrains Mono', monospace, monospace;
+}
+
+/* Callout Detail Hover Tooltip */
+.pin-tooltip-card {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 14, 22, 0.96);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--nvidia-green);
+    border-radius: 10px;
+    padding: 10px 14px;
+    width: 220px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.85), 0 0 16px var(--nvidia-green-glow);
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+    z-index: 30;
+    font-size: 11px;
+}
+
+.spatial-callout-pin:hover .pin-tooltip-card {
+    display: flex;
+    animation: tooltip-fade 0.2s ease;
+}
+
+@keyframes tooltip-fade {
+    from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.tooltip-spec-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 10.5px;
+}
+
+.tooltip-spec-label {
+    color: var(--text-muted);
+}
+
+.tooltip-spec-val {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Bill of Materials (BOM) Slide-out Drawer / Modal
+   ========================================================================== */
+.bom-drawer {
+    width: 94%;
+    max-width: 1160px;
+    max-height: 88vh;
+    background: rgba(12, 17, 27, 0.95);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(118, 185, 0, 0.3);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.85), 0 0 35px rgba(118, 185, 0, 0.15);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: bom-zoom-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bom-zoom-in {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.bom-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(18, 24, 38, 0.4);
+}
+
+.bom-header-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bom-icon-badge {
+    font-size: 24px;
+    background: rgba(118, 185, 0, 0.15);
+    border: 1px solid var(--nvidia-green);
+    border-radius: 10px;
+    padding: 6px 10px;
+}
+
+.bom-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -0.2px;
+}
+
+.bom-subtitle {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.bom-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* BOM Metrics Row */
+.bom-metrics-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    padding: 18px 24px 10px 24px;
+}
+
+.bom-metric-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+.bom-metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3px;
+    height: 100%;
+    background: var(--nvidia-green);
+    opacity: 0.6;
+}
+
+.bom-metric-card:nth-child(3)::before {
+    background: var(--cyan-accent);
+}
+
+.metric-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.6px;
+}
+
+.metric-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace, sans-serif;
+}
+
+.metric-value.highlight {
+    color: var(--cyan-accent);
+}
+
+.metric-sub {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* BOM Filter Bar */
+.bom-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 24px 14px 24px;
+    flex-wrap: wrap;
+}
+
+.bom-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 6px 14px;
+    flex: 1;
+    min-width: 240px;
+}
+
+.bom-search-box input {
+    background: transparent;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    outline: none;
+    width: 100%;
+}
+
+.bom-search-box input::placeholder {
+    color: var(--text-muted);
+}
+
+.bom-filter-tags {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.bom-filter-tag {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: var(--text-secondary);
+    padding: 5px 11px;
+    border-radius: 14px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.bom-filter-tag:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.bom-filter-tag.active {
+    background: rgba(118, 185, 0, 0.22);
+    border-color: var(--nvidia-green);
+    color: #fff;
+    box-shadow: 0 0 10px var(--nvidia-green-glow);
+}
+
+/* BOM Data Table */
+.bom-table-container {
+    overflow-y: auto;
+    max-height: calc(88vh - 270px);
+    padding: 0 24px 20px 24px;
+}
+
+.bom-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0 6px;
+    font-size: 11.5px;
+}
+
+.bom-table thead th {
+    background: rgba(18, 24, 38, 0.6);
+    color: var(--text-muted);
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+}
+
+.bom-table tbody tr {
+    background: rgba(255, 255, 255, 0.025);
+    transition: all 0.15s ease;
+    border-radius: 8px;
+}
+
+.bom-table tbody tr:hover {
+    background: rgba(118, 185, 0, 0.09);
+    transform: translateY(-1px);
+}
+
+.bom-table tbody td {
+    padding: 10px 12px;
+    color: var(--text-primary);
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.bom-table tbody tr td:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-left: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.bom-table tbody tr td:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.bom-item-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(118, 185, 0, 0.18);
+    border: 1px solid var(--nvidia-green);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 700;
+}
+
+.bom-part-name {
+    font-weight: 700;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.bom-part-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--cyan-accent);
+}
+
+.bom-cat-pill {
+    background: rgba(255, 255, 255, 0.06);
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    display: inline-block;
+}
+
+.bom-material-text {
+    font-size: 11px;
+    color: #cbd5e1;
+}
+
+.bom-material-spec {
+    font-size: 9.5px;
+    color: var(--text-muted);
+}
+
+.bom-dim-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: #94a3b8;
+}
+
+.bom-torque-pill {
+    background: rgba(255, 170, 0, 0.12);
+    border: 1px solid rgba(255, 170, 0, 0.3);
+    color: #fbbf24;
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-block;
+}
+
+.bom-price-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: #34d399;
+    font-size: 12px;
+}
+
+.btn-bom-focus {
+    background: rgba(118, 185, 0, 0.15);
+    border: 1px solid var(--nvidia-green);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 10.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+
+.btn-bom-focus:hover {
+    background: var(--nvidia-green);
+    color: #000;
+    box-shadow: 0 0 10px var(--nvidia-green);
+}
+
