@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mechanical AI Digital Twin | Disc Brake Assembly</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top Navigation Header -->
+      <header id="topbar">
+        <div class="brand-section">
+          <div class="brand-logo-badge">NVIDIA OV</div>
+          <div>
+            <div class="brand-title">Mechanical AI Digital Twin</div>
+            <div class="brand-subtitle">Disc_Brake_Assembly.usd • OpenUSD Live Stage</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="status-badge" id="stream-status">
+            <span class="status-dot connecting" id="status-dot"></span>
+            <span id="status-text">Connecting to Kit...</span>
+          </div>
+          <button class="btn-secondary" id="open-key-modal">
+            🔑 <span>Gemini Key</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Workspace -->
+      <main id="workspace">
+        <!-- 3D WebRTC Viewport Container -->
+        <section id="stream-container">
+          <video id="remote-video" playsinline autoplay></video>
+          <audio id="remote-audio" muted></audio>
+
+          <!-- Overlay State Screens -->
+          <div id="loading-stream-message">
+            <div class="spinner"></div>
+            <p>Connecting to Omniverse WebRTC Stream...</p>
+            <span style="font-size: 11px; color: #64748b;">Ensure kit streaming server is running</span>
+          </div>
+
+          <div id="error-message" style="display: none;">
+            <h3 style="color: #ef4444; margin-bottom: 4px;">Stream Connection Failed</h3>
+            <p id="error-message-text" style="font-size: 12px; max-width: 400px; text-align: center;">Unable to connect to 127.0.0.1</p>
+            <button class="btn-secondary" id="retry-stream" style="margin-top: 10px;">Retry Connection</button>
+          </div>
+        </section>
+
+        <!-- Mechanical AI Copilot Sidebar Drawer -->
+        <aside id="chat-drawer">
+          <div class="chat-header">
+            <div class="chat-header-info">
+              <div class="ai-avatar">🤖</div>
+              <div>
+                <div class="chat-title">Mechanical Copilot</div>
+                <div class="chat-subtitle">USD Scene API Grounded • Gemini Flash</div>
+              </div>
+            </div>
+            <button class="btn-secondary" id="clear-chat-btn" style="padding: 4px 8px; font-size: 11px;">Clear</button>
+          </div>
+
+          <!-- Quick Suggestion Action Chips -->
+          <div class="quick-prompts-bar">
+            <button class="chip-btn" data-prompt="What is this scene about? Explain the assembly.">🚀 Scene Summary</button>
+            <button class="chip-btn" data-prompt="Change the Brake Caliper material Metal_Yellow_Paint to racing red.">🔴 Caliper Racing Red</button>
+            <button class="chip-btn" data-prompt="Change the Brake Caliper material Metal_Yellow_Paint to electric blue.">🔵 Caliper Electric Blue</button>
+            <button class="chip-btn" data-prompt="Bind the Aluminum_Anodized material to the Brake Caliper mesh67_mesh.">✨ Bind Aluminum to Caliper</button>
+            <button class="chip-btn" data-prompt="Measure the physical dimensions of the Rotor Disc in millimeters.">📏 Rotor Dimensions</button>
+            <button class="chip-btn" data-prompt="Hide the Brake Caliper so I can inspect the brake pads inside.">👁️ Isolate Brake Pads</button>
+            <button class="chip-btn" data-prompt="Focus camera on the Brake Caliper and highlight it.">🎥 Focus Caliper</button>
+            <button class="chip-btn" data-prompt="What materials are used across the components in this model?">🎨 Materials</button>
+            <button class="chip-btn" data-prompt="Reset the viewport camera to original overview.">🔄 Reset View</button>
+          </div>
+
+          <!-- Message History -->
+          <div id="chat-messages">
+            <div class="message-card assistant">
+              <div class="bubble">
+                <p><strong>Welcome to Mechanical AI Copilot!</strong></p>
+                <p>I am connected directly to your active <code>Assembly.usd</code> stage via the Omniverse USD Scene API.</p>
+                <p>You can ask me questions about the mechanical assembly, component hierarchy, materials, or tell me to highlight specific parts in the 3D viewport.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Input Controls -->
+          <div class="chat-input-area">
+            <div class="status-indicator" id="ai-status">
+              <div class="spinner" style="width: 14px; height: 14px; border-width: 2px;"></div>
+              <span id="ai-status-text">Querying USD Scene API...</span>
+            </div>
+            <div class="input-row">
+              <input 
+                type="text" 
+                id="user-input" 
+                class="chat-input" 
+                placeholder="Ask about the assembly, parts, or materials..." 
+                autocomplete="off"
+              />
+              <button id="send-btn" class="btn-send">Send</button>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <!-- Gemini API Key Modal with Live Model Verification -->
+      <div class="modal-overlay" id="api-key-modal">
+        <div class="modal-box">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 20px;">✨</span>
+              <h3 class="modal-title" style="margin: 0;">Gemini Flash AI Setup</h3>
+            </div>
+            <button type="button" class="btn-secondary" id="close-modal-btn" style="padding: 2px 8px; font-size: 14px;">✕</button>
+          </div>
+
+          <p class="modal-desc">
+            Connect Google Gemini to query your live Omniverse USD stage with natural language and function calling.
+          </p>
+
+          <div class="free-tier-callout">
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span class="callout-badge">100% FREE</span>
+              <strong style="font-size: 12px;">Get a Free API Key (30 seconds):</strong>
+            </div>
+            <ol style="font-size: 11.5px; color: var(--text-secondary); margin-left: 18px; line-height: 1.6;">
+              <li>Open <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style="color: var(--cyan-accent); text-decoration: underline;">Google AI Studio (aistudio.google.com) ↗</a></li>
+              <li>Sign in with your Google Account and click <strong>Create API Key</strong>.</li>
+              <li>Paste it below. No credit card required!</li>
+            </ol>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="display: block; font-size: 11px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; letter-spacing: 0.5px;">
+              GEMINI API KEY
+            </label>
+            <input 
+              type="password" 
+              id="gemini-key-input" 
+              class="input-field" 
+              placeholder="AIzaSy..." 
+              style="margin-bottom: 6px;"
+            />
+          </div>
+
+          <div id="test-status-box" class="test-status-box" style="display: none;"></div>
+
+          <div class="modal-actions" style="margin-top: 18px;">
+            <button type="button" class="btn-secondary" id="test-key-btn">
+              Test Connection
+            </button>
+            <button type="button" class="btn-primary" id="save-key-btn">
+              Save & Activate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

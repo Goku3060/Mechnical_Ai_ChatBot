@@ -1,0 +1,57 @@
+# ==============================================================================
+# Mechanical AI Digital Twin & Chatbot - Root .gitignore
+# ==============================================================================
+
+# External Reference Repositories & Skills
+kit-usd-agents/
+nvidia-skills/
+ovstream/
+.skills/
+**/.skills/
+
+# Web Frontend Build & Dependencies
+Web_Front/node_modules/
+Web_Front/dist/
+Web_Front/dist-ssr/
+Web_Front/*.local
+
+# Omniverse Kit Application Build Artifacts & Caches
+kit-app-template/_*/
+kit-app-template/_build/
+kit-app-template/_compiler/
+kit-app-template/_repo/
+kit-app-template/data/
+kit-app-template/extscache/
+kit-app-template/deps/**/user.toml
+kit-app-template/.vscode/settings.json
+kit-app-template/*.packman.xml.user
+kit-app-template/.omniverse_eula_accepted.txt
+kit-app-template/*.etli
+
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+
+# Operating System & IDE Files
+.DS_Store
+Thumbs.db
+.idea/
+.vs/
+*.suo
+*.user
+*.userosv
+*.sln.docstates
+
+# Logs & Diagnostics
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Crash Reports & Dump Files
+*.dmp
+*.dump
