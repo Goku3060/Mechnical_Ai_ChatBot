@@ -284,6 +284,84 @@ export const GEMINI_USD_TOOLS = [
     }
 ];
 
+/**
+ * Universal CAD tool executor shared between Gemini and Local AI (LM Studio / Nemotron).
+ */
+export async function executeCadTool(usdClient: UsdSceneClient, name: string, args: any): Promise<any> {
+    console.log(`[CAD Tool Exec] Calling ${name}`, args);
+    switch (name) {
+        case 'get_scene_summary':
+            return await usdClient.getSceneSummary();
+
+        case 'get_assembly_hierarchy':
+            return await usdClient.getAssemblyHierarchy(args?.root_path, args?.max_depth);
+
+        case 'inspect_prim':
+            return await usdClient.inspectPrim(args?.prim_path);
+
+        case 'list_materials':
+            return await usdClient.listMaterials();
+
+        case 'search_parts':
+            return await usdClient.searchPrims(args?.query, args?.prim_type);
+
+        case 'get_part_dimensions':
+            return await usdClient.getPartDimensions(args?.prim_path);
+
+        case 'set_part_visibility':
+            return await usdClient.setPartVisibility(args?.prim_path, args?.visible !== false);
+
+        case 'focus_camera_on_part':
+            return await usdClient.focusPrim(args?.prim_path, args?.zoom || 1.0);
+
+        case 'reset_camera':
+            return await usdClient.resetCamera();
+
+        case 'set_material_color': {
+            const color = args?.color_rgb || [1.0, 0.0, 0.0];
+            const mat = args?.material_name || args?.material_path || 'Metal_Yellow_Paint';
+            return await usdClient.setMaterialColor(mat, color);
+        }
+
+        case 'bind_material':
+            return await usdClient.bindMaterial(args?.prim_path, args?.material_name || args?.material_path);
+
+        case 'set_prim_display_color':
+            return await usdClient.setPrimDisplayColor(args?.prim_path, args?.color_rgb || [1.0, 0.0, 0.0]);
+
+        case 'execute_usd_code':
+            return await usdClient.executeUsdCode(args?.code);
+
+        case 'highlight_part':
+            if (args?.prim_path) {
+                await usdClient.selectPart([args.prim_path]);
+                return { status: 'success', highlighted_path: args.prim_path };
+            }
+            return { status: 'error', message: 'prim_path is required' };
+
+        case 'set_exploded_view':
+            return await usdClient.setExplodedView(args?.factor ?? 1.0, true, 0.8);
+
+        case 'set_rotor_kinematics':
+            return await usdClient.setRotorKinematics(args?.enabled !== false, args?.rpm || 120);
+
+        case 'disassemble_component': {
+            const action = args?.action;
+            let progress = args?.progress;
+            if (action === 'assemble') progress = 0.0;
+            else if (action === 'disassemble' || action === 'explode') progress = 1.0;
+            else if (progress === undefined) progress = 1.0;
+            return await usdClient.disassembleStep(args?.step || 'all', progress, true, 0.8, action);
+        }
+
+        case 'get_bill_of_materials':
+            return await usdClient.getBillOfMaterials();
+
+        default:
+            throw new Error(`Unknown tool: ${name}`);
+    }
+}
+
 export class GeminiService {
     private apiKey: string;
     private selectedModel: string = 'gemini-3.8-flash';
@@ -343,78 +421,7 @@ YOU HAVE FULL READ AND WRITE ACCESS TO THE LIVE USD STAGE:
      * Executes tool call using UsdSceneClient.
      */
     private async executeTool(name: string, args: any): Promise<any> {
-        console.log(`[Gemini Tool Exec] Calling ${name}`, args);
-        switch (name) {
-            case 'get_scene_summary':
-                return await this.usdClient.getSceneSummary();
-
-            case 'get_assembly_hierarchy':
-                return await this.usdClient.getAssemblyHierarchy(args?.root_path, args?.max_depth);
-
-            case 'inspect_prim':
-                return await this.usdClient.inspectPrim(args?.prim_path);
-
-            case 'list_materials':
-                return await this.usdClient.listMaterials();
-
-            case 'search_parts':
-                return await this.usdClient.searchPrims(args?.query, args?.prim_type);
-
-            case 'get_part_dimensions':
-                return await this.usdClient.getPartDimensions(args?.prim_path);
-
-            case 'set_part_visibility':
-                return await this.usdClient.setPartVisibility(args?.prim_path, args?.visible !== false);
-
-            case 'focus_camera_on_part':
-                return await this.usdClient.focusPrim(args?.prim_path, args?.zoom || 1.0);
-
-            case 'reset_camera':
-                return await this.usdClient.resetCamera();
-
-            case 'set_material_color': {
-                const color = args?.color_rgb || [1.0, 0.0, 0.0];
-                const mat = args?.material_name || args?.material_path || 'Metal_Yellow_Paint';
-                return await this.usdClient.setMaterialColor(mat, color);
-            }
-
-            case 'bind_material':
-                return await this.usdClient.bindMaterial(args?.prim_path, args?.material_name || args?.material_path);
-
-            case 'set_prim_display_color':
-                return await this.usdClient.setPrimDisplayColor(args?.prim_path, args?.color_rgb || [1.0, 0.0, 0.0]);
-
-            case 'execute_usd_code':
-                return await this.usdClient.executeUsdCode(args?.code);
-
-            case 'highlight_part':
-                if (args?.prim_path) {
-                    await this.usdClient.selectPart([args.prim_path]);
-                    return { status: 'success', highlighted_path: args.prim_path };
-                }
-                return { status: 'error', message: 'prim_path is required' };
-
-            case 'set_exploded_view':
-                return await this.usdClient.setExplodedView(args?.factor ?? 1.0, true, 0.8);
-
-            case 'set_rotor_kinematics':
-                return await this.usdClient.setRotorKinematics(args?.enabled !== false, args?.rpm || 120);
-
-            case 'disassemble_component': {
-                const action = args?.action;
-                let progress = args?.progress;
-                if (action === 'assemble') progress = 0.0;
-                else if (action === 'disassemble' || action === 'explode') progress = 1.0;
-                else if (progress === undefined) progress = 1.0;
-                return await this.usdClient.disassembleStep(args?.step || 'all', progress, true, 0.8, action);
-            }
-
-            case 'get_bill_of_materials':
-                return await this.usdClient.getBillOfMaterials();
-
-            default:
-                throw new Error(`Unknown tool: ${name}`);
-        }
+        return await executeCadTool(this.usdClient, name, args);
     }
 
     private cachedCandidateModels: string[] | null = null;

@@ -7,8 +7,8 @@ The **Mechanical AI Digital Twin** connects a high-performance web dashboard to 
 Unlike static 3D viewers or disconnected chatbots, this architecture provides a **closed-loop, bidirectional digital twin bridge**:
 1. **Authoritative OpenUSD Execution**: The 3D scene graph, geometric tolerances, CAD transforms, and MDL/PBR materials remain authoritative on the Omniverse Kit host.
 2. **Interactive 1080p 60 FPS Viewport**: The browser renders the hardware-decoded WebRTC stream using `@nvidia/ov-web-rtc` and provides smooth camera orbiting, panning, fly mode, and direct prim picking.
-3. **USD Scene API Grounding**: An in-engine Python messaging extension (`StageManager`) exposes 14 CAD inspection, navigation, and write-authoring endpoints over the WebRTC data channel.
-4. **Autonomous AI Function Calling**: The Gemini Flash Copilot translates natural-language queries into structured tool invocations (`get_scene_summary`, `get_assembly_hierarchy`, `inspect_prim`, `get_part_dimensions`, `focus_camera_on_part`, `set_part_visibility`, `set_material_color`, `bind_material`, `execute_usd_code`). Gemini queries live scene state before answering and executes real-time stage modifications with zero manual coding from the operator.
+3. **USD Scene API Grounding**: An in-engine Python messaging extension (`StageManager`) exposes 16 CAD inspection, navigation, spatial projection, and write-authoring endpoints over the WebRTC data channel.
+4. **Autonomous AI Function Calling**: The Gemini Flash Copilot translates natural-language queries into structured tool invocations (across 18 tools including `get_scene_summary`, `get_assembly_hierarchy`, `inspect_prim`, `get_part_dimensions`, `get_bill_of_materials`, `focus_camera_on_part`, `set_part_visibility`, `set_material_color`, `bind_material`, `execute_usd_code`, `set_exploded_view`, `set_rotor_kinematics`, `disassemble_component`). Gemini queries live scene state before answering and executes real-time stage modifications with zero manual coding from the operator.
 5. **Interactive CAD Chat Integration**: Part names generated in chat responses become clickable badges (`.part-tag`), enabling operators to click any mentioned mechanical component to instantly highlight and frame the 3D camera on it.
 
 ---
@@ -111,14 +111,14 @@ d:\Mechnical_Ai_Chatbot\
 
 | Component | Path / Package | Primary Responsibilities |
 |---|---|---|
-| **Web Client Host** | [`Web_Front/src/main.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/main.ts) | Manages application bootstrap, WebRTC stream configuration, status badges, connection retries, and delegates user clicks on interactive part chips. |
-| **USD Scene Client** | [`Web_Front/src/services/usdSceneClient.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/usdSceneClient.ts) | Wraps `@nvidia/ov-web-rtc` custom messaging in asynchronous Promises with unique correlation and 10s timeouts for robust request/response RPC. |
-| **AI Copilot Service** | [`Web_Front/src/services/geminiService.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/geminiService.ts) | Manages Google Gemini Flash multi-turn conversation, model catalog discovery, resilient fallback handling (503/429/500/404), CAD tool declarations, and tool execution. |
+| **Web Client Host** | [`Web_Front/src/main.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/main.ts) | Manages application bootstrap, WebRTC stream configuration, status badges, kinematics HUD controls, 3D spatial callout rendering, Bill of Materials (BOM) drawer with CSV/JSON export, and delegates user clicks on interactive part chips. |
+| **USD Scene Client** | [`Web_Front/src/services/usdSceneClient.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/usdSceneClient.ts) | Wraps `@nvidia/ov-web-rtc` custom messaging in asynchronous Promises with unique correlation and 10s timeouts for 16 request/response RPC endpoints (including `getBillOfMaterials` and `getSpatialCallouts`). |
+| **AI Copilot Service** | [`Web_Front/src/services/geminiService.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/geminiService.ts) | Manages Google Gemini Flash multi-turn conversation, model catalog discovery, resilient fallback handling (503/429/500/404), 18 CAD tool declarations (`GEMINI_USD_TOOLS`), and tool execution. |
 | **Design System** | [`Web_Front/src/index.css`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/index.css) | Custom glassmorphism dark mode (`#0a0d14`), NVIDIA green accents (`#76b900`), cyan telemetry glows, responsive split-screen viewport layout, and animations. |
 | **WebRTC SDK** | `@nvidia/ov-web-rtc` (v6.x) | Manages WebRTC peer connection, SDP negotiation, H.264 video decoding, mouse/keyboard input capture, and bidirectional data channel communication. |
 | **Kit Streaming App** | [`kit-app-template/source/apps/my_company.my_usd_viewer_streaming.kit`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/apps/my_company.my_usd_viewer_streaming.kit) | Configures Kit SDK with `omni.kit.livestream.app`, `omni.kit.livestream.webrtc`, locks renderer resolution to $1920 \times 1080$, and pins framerate to 60 FPS. |
 | **Setup Extension** | [`my_company.my_usd_viewer_setup_extension`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/extensions/my_company.my_usd_viewer_setup_extension/my_company/my_usd_viewer_setup_extension/setup.py) | Reads `--/app/auto_load_usd`, verifies file resolution, waits for stage readiness, opens the stage asynchronously, hides default menu bars, and enforces viewport layouts. |
-| **Messaging Extension** | [`my_company.my_usd_viewer_messaging_extension`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/extensions/my_company.my_usd_viewer_messaging_extension/my_company/my_usd_viewer_messaging_extension/stage_management.py) | Registers 14 incoming and outgoing WebRTC custom events, inspects USD hierarchy, computes physical bounding boxes with `UsdGeom.BBoxCache`, edits materials, and executes custom USD Python code. |
+| **Messaging Extension** | [`my_company.my_usd_viewer_messaging_extension`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/extensions/my_company.my_usd_viewer_messaging_extension/my_company/my_usd_viewer_messaging_extension/stage_management.py) | Registers 16 incoming and outgoing WebRTC custom events, inspects USD hierarchy, computes physical bounding boxes with `UsdGeom.BBoxCache`, projects 3D spatial screen callouts, calculates authoritative BOM specifications, edits materials, and executes custom USD Python code. |
 | **Digital Twin USD Model** | [`Model/Assembly.usd`](file:///d:/Mechnical_Ai_Chatbot/Model/Assembly.usd) / [`Assembly.usda`](file:///d:/Mechnical_Ai_Chatbot/Model/Assembly.usda) | Authoritative CAD model of the Disc Brake Assembly with root prim `/World/Disc_Brake_Assembly`, component sub-assemblies, and high-quality MDL/PBR materials in `/World/Looks`. |
 
 ---
@@ -222,6 +222,13 @@ sequenceDiagram
 | `setRotorKinematicsRequest` | `setRotorKinematicsResponse` | Browser $\leftrightarrow$ Kit | Request: `{ enabled: boolean, rpm?: float }`<br/>Response: `{ status, kinematics_enabled, rpm }` | Subscribes to Omniverse Kit's per-frame update event stream to continuously rotate the brake rotor disc around its axle axis. |
 | `disassembleStepRequest` | `disassembleStepResponse` | Browser $\leftrightarrow$ Kit | Request: `{ step: string, progress?: float }`<br/>Response: `{ status, step, progress, step_progress, updated_count }` | Applies selective disassembly to component subsets (`bolts`, `caliper`, `pads`, `rotor`, `hub`, `all`, or `reset`). |
 
+### 5. Spatial Callouts & Bill of Materials Message Types
+
+| Request Event | Response Event | Direction | Key Payload Attributes | Omniverse Kit Operation |
+|---|---|---|---|---|
+| `getBillOfMaterialsRequest` | `getBillOfMaterialsResponse` | Browser $\leftrightarrow$ Kit | Response: `{ assembly_name, total_items, total_qty, total_weight_kg, total_cost_usd, currency, certification, items: [ { item_no, name, part_number, category, material, unit_price, weight_kg, torque_nm, prim_path, dimensions_mm } ] }` | Evaluates authoritative engineering BOM specification (`BILL_OF_MATERIALS_SPEC`), enriches each component with live `UsdGeom.BBoxCache` measurements in mm, and calculates total assembly mass (21.19 kg) and cost ($552.00). |
+| `getSpatialCalloutsRequest` | `getSpatialCalloutsResponse` | Browser $\leftrightarrow$ Kit | Response: `{ status, camera_path, exploded_factor, callouts: [ { item_no, name, part_number, category, screen_x_pct, screen_y_pct, depth_m, visible, world_pos } ] }` | Queries the active viewport camera (`get_active_viewport_camera_string`), inverts its world transform matrix, and projects 3D component bounding centers onto normalized screen percentages (0% to 100%) for live SVG leader line rendering. |
+
 ---
 
 ## AI Copilot & Function Calling Architecture
@@ -266,13 +273,14 @@ sequenceDiagram
 
 ### 1. Declared CAD Tools Schema (`GEMINI_USD_TOOLS`)
 
-The Copilot is initialized with 11 engineering tools:
+The Copilot is initialized with 18 engineering tools:
 - **`get_scene_summary`**: High-level CAD summary, unit scale, up axis, prim counts.
 - **`get_assembly_hierarchy`**: Structured assembly tree of sub-assemblies, parts, and materials.
 - **`inspect_prim`**: Deep inspection of vertex/face counts, translation transforms, and schemas.
 - **`list_materials`**: Catalog of all materials defined under `/World/Looks`.
 - **`search_parts`**: Keyword and type search across the stage for components (e.g., "rotor", "caliper", "bolt").
 - **`get_part_dimensions`**: Millimeter bounding-box measurements computed via `UsdGeom.BBoxCache`.
+- **`get_bill_of_materials`**: Retrieves the authoritative engineering Bill of Materials (BOM) including item numbers, part numbers, engineering categories, ASTM/SAE alloys, torque ratings (N·m), unit prices, quantities, stock status, weights (kg), bounding box dimensions (mm), and assembly totals ($552.00 total cost, 21.19 kg total weight, 8 parts).
 - **`set_part_visibility`**: Shows or hides components (e.g., hiding caliper to inspect internal brake pads).
 - **`focus_camera_on_part`**: Smoothly frames and zooms viewport camera on specific components.
 - **`reset_camera`**: Resets viewport camera to the original assembly overview framing.
@@ -294,6 +302,17 @@ In production, Google Gemini API endpoints can experience transient rate limits 
 3. **Seamless Failover**: If any model returns HTTP 503, 429, 500, or 404, the service logs the event, updates the UI status badge, switches to the next candidate model in the pool, and saves the successful model to `localStorage`.
 4. **Client Auth Safeguard**: For invalid API keys (HTTP 400, 401, 403), failover halts immediately and prompts the operator to verify their Google AI Studio key.
 
+### 3. Dual AI Engine: Offline Local LLM (LM Studio + NVIDIA Nemotron-4B)
+
+The architecture supports a dual-mode AI backend coordinated through `AiCoordinator`:
+1. **Cloud Google Gemini Flash**: Fast, multimodal, with extensive cloud context windows.
+2. **Offline Local AI (LM Studio + NVIDIA Nemotron-3-Nano-4B)**:
+   - **Private & Zero-Cost**: Runs directly on the operator's local NVIDIA RTX GPU via LM Studio's local inference server (`http://localhost:1235/v1` or configured port).
+   - **OpenAI-Compatible Tool Calling**: Converts the 18 CAD tools from Gemini's parameter format to standard OpenAI JSON Schema definitions with lowercase types (`object`, `string`, `number`).
+   - **Autonomous Tool Execution**: Nemotron reasons over prompts, emits `finish_reason: "tool_calls"`, which the client executes against the live USD stage over WebRTC before returning results with `role: "tool"` and `tool_call_id`.
+   - **CORS-Free Vite Reverse Proxy**: Web dashboard requests route through `/api/local-llm` mapped to `http://localhost:1235`, eliminating cross-origin browser restrictions.
+   - **Dynamic Provider Hot-Switching**: Operators can toggle instantly between Local Nemotron and Gemini Cloud without restarting Kit or the web client.
+
 ---
 
 ## Web Client User Interface (`Web_Front`)
@@ -303,43 +322,54 @@ The frontend is built with pure TypeScript and modern CSS without external UI fr
 ### Key Interface Modules
 
 ```text
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  [NVIDIA OV]  Mechanical AI Digital Twin   •   Disc_Brake_Assembly.usd   ● Live Stream │
-├──────────────────────────────────────────────────────────┬─────────────────────────────┤
-│                                                          │ 🤖 Mechanical Copilot       │
-│                                                          ├─────────────────────────────┤
-│                                                          │ [🚀 Scene Summary]          │
-│                                                          │ [🔴 Caliper Racing Red]     │
-│                 3D WebRTC Viewport                       │ [🔵 Caliper Electric Blue]  │
-│                                                          │ [📏 Rotor Dimensions]       │
-│                (1920 x 1080 @ 60 FPS)                    │ [👁️ Isolate Brake Pads]     │
-│                                                          │ [🎥 Focus Caliper]          │
-│                Interactive RTX Stream                    ├─────────────────────────────┤
-│         (Orbit, Pan, Fly, Prim Selection)                │ Chat History:               │
-│                                                          │ User: What is the rotor size│
-│                                                          │ Copilot: Rotor Disc:        │
-│                                                          │ • Width: 320.00 mm          │
-│                                                          │ • Height: 320.00 mm         │
-│                                                          │ • Thickness: 28.50 mm       │
-│                                                          ├─────────────────────────────┤
-│                                                          │ [ Input prompt...   ] [Send]│
-└──────────────────────────────────────────────────────────┴─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  [NVIDIA OV]  Mechanical AI Digital Twin   •   Disc_Brake_Assembly.usd   ● Live   [📋 BOM] [🔑 Key]│
+├────────────────────────────────────────────────────────────────────┬─────────────────────────────┤
+│                 3D WebRTC Viewport (1920x1080 @ 60 FPS)            │ 🤖 Mechanical Copilot       │
+│                                                                    ├─────────────────────────────┤
+│   🏷️ [Callout: Brake Caliper]       🏷️ [Callout: Rotor Disc]        │ [📋 Assembly BOM]           │
+│         \                                 /                        │ [🔧 Torque Specs]           │
+│          \────── Dynamic SVG Leader Lines/                         │ [💥 Explode View]           │
+│                                                                    │ [🔴 Caliper Racing Red]     │
+│  ┌──────────────────────────────────────────────────────────────┐  │ [📏 Rotor Dimensions]       │
+│  │ HUD: [💥 Explode 0-100%] [⚙️ Spin Rotor 120 RPM] [🔩 Steps]   │  │ [👁️ Isolate Brake Pads]     │
+│  │      [◀ Step] [Step ▶] [Bolts] [Caliper] [Pads] [Hub] [🏷️Pins]│  ├─────────────────────────────┤
+│  └──────────────────────────────────────────────────────────────┘  │ Chat History & Part Tags    │
+│                                                                    │ Copilot: Rotor Disc:        │
+│                                                                    │ • Width: 320.00 mm          │
+│                                                                    │ • Thickness: 28.50 mm       │
+│                                                                    ├─────────────────────────────┤
+│                                                                    │ [ Input prompt...   ] [Send]│
+└────────────────────────────────────────────────────────────────────┴─────────────────────────────┘
 ```
 
-1. **Top Navigation Bar**: Brand logo badge, active USD stage badge (`Assembly.usd`), real-time WebRTC connection status indicator (`connecting`, `connected`, `error`), and Gemini API Key configuration button.
-2. **Interactive 3D Viewport**: Hardware-accelerated `<video id="remote-video">` element displaying the live stream with native mouse and keyboard navigation.
-3. **Quick Action Chips Bar**: One-touch suggestion buttons that trigger common mechanical analysis and scene modification commands:
+1. **Top Navigation Bar**: Brand logo badge, active USD stage badge (`Assembly.usd`), real-time WebRTC connection status indicator (`connecting`, `connected`, `error`), Bill of Materials modal trigger (`📋 Bill of Materials`), and Gemini API Key configuration button (`🔑 Gemini Key`).
+2. **Interactive 3D Viewport**: Hardware-accelerated `<video id="remote-video">` element displaying the 1080p 60 FPS stream with native mouse orbit, middle-drag pan, and fly mode controls.
+3. **Floating Kinematics & Exploded View HUD**: Real-time control dock positioned over the viewport:
+   - **Exploded View Slider**: Smoothly scrubs assembly explosion from 0% (assembled) to 100% (fully exploded), with dedicated **Explode** and **Assemble** animation triggers.
+   - **Rotor Kinematics Controller**: Toggles continuous 60 FPS spinning of the brake rotor disc with a live rotational speed selector (60, 120, 240, or 480 RPM).
+   - **Sequential Step Disassembly / Assembly**: Step-by-step sequential animation triggers (`◀ Assemble Step`, `Explode Step ▶`) and direct group toggles (`Bolts`, `Caliper`, `Pads`, `Hub`).
+   - **Spatial Callouts Toggle**: One-touch toggle (`btn-toggle-callouts`) to show or hide 3D tracking pins and leader lines.
+4. **Interactive 3D Spatial Callouts Layer**: Real-time projection overlay combining an SVG canvas (`#callout-leader-lines`) and HTML pinpoint markers (`#callout-pins-container`). The server projects 3D component bounding centers onto 2D viewport coordinates using active camera matrices, tracking component positions as the operator orbits or moves the camera.
+5. **Bill of Materials (BOM) Slide-out Drawer**: Comprehensive engineering parts catalog modal powered by live USD stage inspection:
+   - **Metric Summary Cards**: Total Components (8 Parts), Total Weight (21.19 kg dry mass), Total Cost ($552.00 OEM list price), and Certification standard (SAE J431 / ISO/TS 16949).
+   - **Category Filter Tabs**: Quick filtering across `All (8)`, `Hydraulics`, `Friction`, `Structural`, `Fasteners`, and `Drive Interface`.
+   - **Interactive Search & 3D Focus**: Substring search across part names, part numbers, alloys, and categories, with instant **🎯 Focus** buttons to frame the camera on any part.
+   - **Data Export**: One-click **📥 Export CSV** and **💾 Export JSON** buttons for spreadsheet and enterprise ERP integration.
+6. **Quick Action Chips Bar**: Suggestion buttons that trigger common mechanical analysis and scene modification prompts:
+   - 📋 **Assembly BOM**: Full parts specification, alloys, weights, and costs.
+   - 🔧 **Torque Specs**: Fastener torque specifications (e.g. 115 N·m caliper bolts, 140 N·m wheel studs).
+   - 💥 **Explode View** / 🧩 **Reassemble**: Full assembly explosion and reset.
+   - 🔄 **Spin Rotor (180 RPM)** / 🛑 **Stop Rotor**: Rotor disc kinematics control.
+   - 🔩 **Disassemble Bolts**: Removes caliper mounting bolts for maintenance inspection.
    - 🚀 **Scene Summary**: High-level CAD structure and component breakdown.
-   - 🔴 **Caliper Racing Red**: Changes `Metal_Yellow_Paint` to racing red `[1.0, 0.0, 0.0]`.
-   - 🔵 **Caliper Electric Blue**: Changes `Metal_Yellow_Paint` to electric blue `[0.0, 0.3, 1.0]`.
+   - 🔴 **Caliper Racing Red** / 🔵 **Electric Blue**: Live MDL material finish modifications.
    - ✨ **Bind Aluminum to Caliper**: Assigns `Aluminum_Anodized` to caliper housing.
    - 📏 **Rotor Dimensions**: Authoritative millimeter dimensional measurements.
-   - 👁️ **Isolate Brake Pads**: Hides occluding caliper to reveal inner brake pads.
-   - 🎥 **Focus Caliper**: Frames camera on `Brake_Caliper`.
-   - 🎨 **Materials**: Catalogs all materials in `/World/Looks`.
-   - 🔄 **Reset View**: Restores default camera overview.
-4. **Interactive Chat Stream**: Displays conversation with markdown formatting, tool-execution status badges, and interactive part chips (`<span class="part-tag" data-prim="...">`). Clicking a part chip automatically selects the prim and frames the viewport camera on it.
-5. **Gemini API Setup Modal**: Dialog for inputting and validating Google AI Studio keys with live model verification.
+   - 👁️ **Isolate Brake Pads**: Hides caliper housing to inspect inner friction pads.
+   - 🎥 **Focus Caliper** / 🔄 **Reset View**: Viewport camera framing.
+7. **Interactive Chat Stream**: Displays multi-turn conversation with markdown formatting, tool-execution status badges, and interactive part chips (`<span class="part-tag" data-prim="...">`). Clicking any part badge automatically selects the prim and frames the viewport camera on it.
+8. **Gemini API Setup Modal**: Dialog for inputting and validating Google AI Studio keys with live model candidate verification and instant connection testing.
 
 ---
 

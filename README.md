@@ -8,7 +8,7 @@
 
 An interactive industrial digital twin dashboard connecting a modern web client to a live **NVIDIA Omniverse Kit** USD PhysX/RTX ray-traced simulation of an automotive **Disc Brake Assembly** (`Assembly.usd`).
 
-The web client renders the Kit viewport as a real-time, low-latency WebRTC video stream (1080p 60 FPS) and provides an autonomous **Mechanical AI Copilot** powered by Google Gemini Flash. The Copilot is directly grounded in the live OpenUSD stage through 14 bidirectional USD Scene API endpoints—supporting assembly hierarchy queries, millimeter dimension calculations, camera framing, interactive visibility toggles, real-time material editing, and arbitrary USD Python execution.
+The web client renders the Kit viewport as a real-time, low-latency WebRTC video stream (1080p 60 FPS) and provides an autonomous **Mechanical AI Copilot** powered by Google Gemini Flash. The Copilot is directly grounded in the live OpenUSD stage through 16 bidirectional USD Scene API endpoints—supporting assembly hierarchy queries, millimeter dimension calculations, camera framing, interactive visibility toggles, real-time material editing, 3D spatial screen projection, authoritative engineering Bill of Materials (BOM) calculations, and arbitrary USD Python execution.
 
 ---
 
@@ -16,7 +16,9 @@ The web client renders the Kit viewport as a real-time, low-latency WebRTC video
 
 - **Authoritative OpenUSD Execution**: Live 3D stage (`Assembly.usd`) runs in NVIDIA Omniverse Kit with full CAD hierarchies, vertex/face geometries, and MDL/OmniPBR materials.
 - **Hardware-Accelerated WebRTC Streaming**: Streams 1080p 60 FPS video directly to the browser via `@nvidia/ov-web-rtc` with camera orbit, pan, fly mode, and direct prim picking.
-- **Autonomous Gemini Flash Copilot**: Natural-language CAD assistant with structured tool calling (`GEMINI_USD_TOOLS`) for live scene inspection, dimensional measurement, and stage modification.
+- **Dual AI Engine (Local Nemotron-4B or Gemini Cloud)**: Autonomous CAD assistant with 18 engineering tools for live scene inspection, kinematics, color mutation, BOM queries, and stage modification. Runs 100% offline via LM Studio with NVIDIA Nemotron or via Google Gemini Flash.
+- **Authoritative Bill of Materials (BOM) Drawer**: Live parts catalog ($552.00 total cost, 21.19 kg dry mass, 8 parts) with ASTM/SAE alloys, fastener torque ratings (N·m), part weights, category filtering, interactive search, 3D camera focus, and one-click CSV / JSON export.
+- **Interactive 3D Spatial Callouts**: Projects live 3D component bounding centers onto 2D viewport coordinates with dynamic SVG leader lines and pinpoint markers tracking camera movements in real time.
 - **Interactive Part Badges**: CAD components mentioned by the AI Copilot render as interactive chips (`.part-tag`). Clicking any part instantly selects and frames the 3D viewport camera on it.
 - **Real-Time Material & Color Authoring**: Change material finishes (e.g., turning the brake caliper racing red or electric blue, binding anodized aluminum) live on the stage over the WebRTC data channel.
 - **Exploded View & Step Disassembly / Assembly**: 60 FPS smooth server-side cubic easing for full explosion and reset, plus sequential part-by-part disassembly and assembly (caliper bolts, brake pads, caliper housing, wheel hub & studs).
@@ -68,12 +70,12 @@ For full architectural specifications, data channel message schemas, and impleme
 │
 ├── Web_Front/                       # Frontend Web Application (Vite + TypeScript)
 │   ├── src/
-│   │   ├── main.ts                  # App lifecycle, stream setup, interactive delegation
+│   │   ├── main.ts                  # App lifecycle, stream setup, BOM drawer, HUD & 3D callouts
 │   │   ├── index.css                # Glassmorphism dark mode & NVIDIA green design system
 │   │   └── services/
-│   │       ├── usdSceneClient.ts    # WebRTC custom message Promise bridge
-│   │       └── geminiService.ts     # Gemini Flash Copilot & CAD tools catalog
-│   └── index.html                   # 3D viewport, chat drawer, prompt chips, API key modal
+│   │       ├── usdSceneClient.ts    # WebRTC custom message Promise bridge (16 endpoints)
+│   │       └── geminiService.ts     # Gemini Flash Copilot & 18 CAD tools catalog
+│   └── index.html                   # 3D viewport, BOM drawer, kinematics HUD, chat drawer, chips
 │
 ├── kit-app-template/                # Omniverse Kit Application & Custom Extensions
 │   └── source/
@@ -120,9 +122,15 @@ For full architectural specifications, data channel message schemas, and impleme
    ```
    Open your browser to [http://localhost:5173](http://localhost:5173).
 
-4. **Connect AI Copilot**:
-   - Click the **🔑 Gemini Key** button in the top navigation bar.
-   - Enter your Google AI Studio API key and click **Test Connection** $\to$ **Save & Activate**.
+4. **Connect AI Copilot (Local LM Studio or Gemini Cloud)**:
+   - Click the **🤖 AI Copilot** button in the top navigation bar.
+   - **Option A (Local Offline - Recommended)**:
+     - Select **🖥️ Local LM Studio (Nemotron)**.
+     - Set Base URL to `http://localhost:1235/v1` (or your LM Studio port).
+     - Ensure `nvidia/nemotron-3-nano-4b` is loaded and click **Test Connection** $\to$ **Save & Activate**.
+   - **Option B (Cloud Gemini)**:
+     - Select **☁️ Google Gemini Cloud**.
+     - Enter your free Google AI Studio API key and click **Test Connection** $\to$ **Save & Activate**.
 
 5. **Shutdown**:
    ```cmd

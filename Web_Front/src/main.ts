@@ -10,13 +10,13 @@ import {
     EventStatus
 } from '@nvidia/ov-web-rtc';
 import { UsdSceneClient } from './services/usdSceneClient';
-import { GeminiService } from './services/geminiService';
+import { AiCoordinator } from './services/aiCoordinator';
 
 class MechanicalApp {
     private streamConnected = false;
     private streamRequested = false;
     private usdClient: UsdSceneClient;
-    private geminiService: GeminiService;
+    private aiService: AiCoordinator;
 
     // DOM Elements
     private statusDot!: HTMLElement;
@@ -73,7 +73,7 @@ class MechanicalApp {
 
     constructor() {
         this.usdClient = new UsdSceneClient();
-        this.geminiService = new GeminiService(this.usdClient);
+        this.aiService = new AiCoordinator(this.usdClient);
     }
 
     public async initialize() {
@@ -149,7 +149,7 @@ class MechanicalApp {
 
         // Clear chat button
         document.getElementById('clear-chat-btn')?.addEventListener('click', () => {
-            this.geminiService.clearHistory();
+            this.aiService.clearHistory();
             this.chatMessages.innerHTML = `
                 <div class="message-card assistant">
                     <div class="bubble">
@@ -160,12 +160,42 @@ class MechanicalApp {
             `;
         });
 
-        // API Key Modal
+        // AI Copilot Provider Modal (Local LM Studio + Google Gemini)
         const testStatusBox = document.getElementById('test-status-box')!;
         const testKeyBtn = document.getElementById('test-key-btn') as HTMLButtonElement;
+        const tabBtnLocal = document.getElementById('tab-btn-local');
+        const tabBtnGemini = document.getElementById('tab-btn-gemini');
+        const panelLocal = document.getElementById('panel-local');
+        const panelGemini = document.getElementById('panel-gemini');
+        const localBaseUrlInput = document.getElementById('local-base-url-input') as HTMLInputElement;
+        const localModelInput = document.getElementById('local-model-input') as HTMLInputElement;
+
+        let activeTab: 'local' | 'gemini' = this.aiService.getProvider();
+
+        const setModalTab = (provider: 'local' | 'gemini') => {
+            activeTab = provider;
+            if (provider === 'local') {
+                tabBtnLocal?.classList.add('active');
+                tabBtnGemini?.classList.remove('active');
+                panelLocal?.classList.add('active');
+                panelGemini?.classList.remove('active');
+            } else {
+                tabBtnGemini?.classList.add('active');
+                tabBtnLocal?.classList.remove('active');
+                panelGemini?.classList.add('active');
+                panelLocal?.classList.remove('active');
+            }
+            testStatusBox.style.display = 'none';
+        };
+
+        tabBtnLocal?.addEventListener('click', () => setModalTab('local'));
+        tabBtnGemini?.addEventListener('click', () => setModalTab('gemini'));
 
         document.getElementById('open-key-modal')?.addEventListener('click', () => {
-            this.keyInput.value = this.geminiService.getApiKey();
+            setModalTab(this.aiService.getProvider());
+            if (localBaseUrlInput) localBaseUrlInput.value = this.aiService.local.getBaseUrl();
+            if (localModelInput) localModelInput.value = this.aiService.local.getModel();
+            if (this.keyInput) this.keyInput.value = this.aiService.gemini.getApiKey();
             testStatusBox.style.display = 'none';
             this.modal.classList.add('open');
         });
@@ -175,115 +205,144 @@ class MechanicalApp {
         });
 
         testKeyBtn?.addEventListener('click', async () => {
-            const key = this.keyInput.value.trim();
-            if (!key) {
-                testStatusBox.style.display = 'flex';
-                testStatusBox.className = 'test-status-box error';
-                testStatusBox.textContent = '❌ Please enter an API key first.';
-                return;
-            }
-
             testKeyBtn.disabled = true;
             testStatusBox.style.display = 'flex';
-            testStatusBox.className = 'test-status-box testing';
-            testStatusBox.textContent = '⏳ Verifying API Key with Google AI...';
 
-            try {
-                // 1. Query model catalog for this key with a 5s timeout
-                const catalogRes = await fetch(
-                    `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
-                    { signal: AbortSignal.timeout(5000) }
-                );
+            if (activeTab === 'local') {
+                testStatusBox.className = 'test-status-box testing';
+                const url = localBaseUrlInput?.value.trim() || 'http://localhost:1235/v1';
+                testStatusBox.textContent = `⏳ Connecting to LM Studio at ${url}...`;
 
-                if (!catalogRes.ok) {
-                    const errText = await catalogRes.text();
-                    throw new Error(errText);
-                }
-
-                const data = await catalogRes.json();
-                const rawModels: Array<{ name: string; supportedGenerationMethods?: string[] }> = data.models || [];
-                const valid = rawModels.filter(m => m.supportedGenerationMethods?.includes('generateContent'));
-
-                if (valid.length === 0) {
-                    throw new Error('Key is valid, but no models supporting generateContent were found.');
-                }
-
-                const flash = valid
-                    .filter(m => m.name.toLowerCase().includes('flash'))
-                    .map(m => m.name.replace(/^models\//, ''));
-                const others = valid
-                    .filter(m => !m.name.toLowerCase().includes('flash'))
-                    .map(m => m.name.replace(/^models\//, ''));
-
-                const candidateNames = Array.from(
-                    new Set(['gemini-3.8-flash', ...flash, ...others])
-                ).filter(m => !m.includes('gemini-2.0')).slice(0, 5);
-
-                let verifiedModel = '';
-                let lastErrText = '';
-
-                for (const modelName of candidateNames) {
-                    testStatusBox.textContent = `⏳ Testing model: ${modelName}...`;
-                    try {
-                        const testRes = await fetch(
-                            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`,
-                            {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }],
-                                }),
-                                signal: AbortSignal.timeout(3500),
-                            }
-                        );
-
-                        if (testRes.ok) {
-                            verifiedModel = modelName;
-                            break;
-                        } else {
-                            const err = await testRes.text();
-                            lastErrText = err;
-                            if (err.includes('API_KEY_INVALID') || testRes.status === 403) {
-                                break;
-                            }
-                        }
-                    } catch (e: any) {
-                        lastErrText = e.message || String(e);
+                try {
+                    const res = await this.aiService.local.testConnection(url);
+                    testStatusBox.className = 'test-status-box success';
+                    testStatusBox.textContent = `✅ Connected! Model: ${res.activeModel} (${res.models.length} loaded in LM Studio)`;
+                    if (localModelInput) {
+                        localModelInput.value = res.activeModel;
                     }
+                    const badge = document.getElementById('detected-models-count');
+                    if (badge) {
+                        badge.textContent = `${res.models.length} model(s) online`;
+                    }
+                } catch (err: any) {
+                    testStatusBox.className = 'test-status-box error';
+                    testStatusBox.textContent = `❌ LM Studio connection failed: ${err.message || 'Make sure LM Studio local server is started on port 1235'}`;
+                } finally {
+                    testKeyBtn.disabled = false;
+                }
+            } else {
+                // Gemini validation
+                const key = this.keyInput.value.trim();
+                if (!key) {
+                    testStatusBox.className = 'test-status-box error';
+                    testStatusBox.textContent = '❌ Please enter a Gemini API key first.';
+                    testKeyBtn.disabled = false;
+                    return;
                 }
 
-                if (!verifiedModel) {
-                    throw new Error(lastErrText || 'Could not find an active model on your account');
-                }
+                testStatusBox.className = 'test-status-box testing';
+                testStatusBox.textContent = '⏳ Verifying API Key with Google AI...';
 
-                this.geminiService.setApiKey(key);
-                localStorage.setItem('gemini_active_model', verifiedModel);
-                testStatusBox.className = 'test-status-box success';
-                testStatusBox.textContent = `✅ Verified! Connected to: ${verifiedModel}`;
+                try {
+                    const catalogRes = await fetch(
+                        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+                        { signal: AbortSignal.timeout(5000) }
+                    );
 
-                const keyBtn = document.getElementById('open-key-modal');
-                if (keyBtn) {
-                    keyBtn.innerHTML = `🔑 <span>${verifiedModel}</span>`;
+                    if (!catalogRes.ok) {
+                        const errText = await catalogRes.text();
+                        throw new Error(errText);
+                    }
+
+                    const data = await catalogRes.json();
+                    const rawModels: Array<{ name: string; supportedGenerationMethods?: string[] }> = data.models || [];
+                    const valid = rawModels.filter((m) => m.supportedGenerationMethods?.includes('generateContent'));
+
+                    if (valid.length === 0) {
+                        throw new Error('Key is valid, but no models supporting generateContent were found.');
+                    }
+
+                    const flash = valid
+                        .filter((m) => m.name.toLowerCase().includes('flash'))
+                        .map((m) => m.name.replace(/^models\//, ''));
+                    const others = valid
+                        .filter((m) => !m.name.toLowerCase().includes('flash'))
+                        .map((m) => m.name.replace(/^models\//, ''));
+
+                    const candidateNames = Array.from(
+                        new Set(['gemini-3.8-flash', ...flash, ...others])
+                    ).filter((m) => !m.includes('gemini-2.0')).slice(0, 5);
+
+                    let verifiedModel = '';
+                    let lastErrText = '';
+
+                    for (const modelName of candidateNames) {
+                        testStatusBox.textContent = `⏳ Testing model: ${modelName}...`;
+                        try {
+                            const testRes = await fetch(
+                                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${key}`,
+                                {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        contents: [{ role: 'user', parts: [{ text: 'Respond with OK' }] }],
+                                    }),
+                                    signal: AbortSignal.timeout(3500),
+                                }
+                            );
+
+                            if (testRes.ok) {
+                                verifiedModel = modelName;
+                                break;
+                            } else {
+                                const err = await testRes.text();
+                                lastErrText = err;
+                                if (err.includes('API_KEY_INVALID') || testRes.status === 403) {
+                                    break;
+                                }
+                            }
+                        } catch (e: any) {
+                            lastErrText = e.message || String(e);
+                        }
+                    }
+
+                    if (!verifiedModel) {
+                        throw new Error(lastErrText || 'Could not find an active model on your account');
+                    }
+
+                    this.aiService.gemini.setApiKey(key);
+                    localStorage.setItem('gemini_active_model', verifiedModel);
+                    testStatusBox.className = 'test-status-box success';
+                    testStatusBox.textContent = `✅ Verified! Connected to: ${verifiedModel}`;
+                } catch (err: any) {
+                    testStatusBox.className = 'test-status-box error';
+                    testStatusBox.textContent = `❌ Failed: ${err.message || 'Invalid API Key'}`;
+                } finally {
+                    testKeyBtn.disabled = false;
                 }
-            } catch (err: any) {
-                testStatusBox.className = 'test-status-box error';
-                testStatusBox.textContent = `❌ Failed: ${err.message || 'Invalid API Key'}`;
-            } finally {
-                testKeyBtn.disabled = false;
             }
         });
 
         document.getElementById('save-key-btn')?.addEventListener('click', () => {
-            const key = this.keyInput.value.trim();
-            if (key) {
-                this.geminiService.setApiKey(key);
+            if (activeTab === 'local') {
+                const url = localBaseUrlInput?.value.trim() || 'http://localhost:1235/v1';
+                const model = localModelInput?.value.trim() || 'nvidia/nemotron-3-nano-4b';
+                this.aiService.local.setBaseUrl(url);
+                this.aiService.local.setModel(model);
+                this.aiService.setProvider('local');
+                this.updateProviderUI();
                 this.modal.classList.remove('open');
-                const activeModel = this.geminiService.getActiveModel();
-                const keyBtn = document.getElementById('open-key-modal');
-                if (keyBtn) {
-                    keyBtn.innerHTML = `🔑 <span>${activeModel}</span>`;
+                this.appendAssistantMessage(`✅ **Local AI Activated!** Connected to LM Studio with **${model}** at \`${url}\`. Offline CAD digital twin copilot is active!`);
+            } else {
+                const key = this.keyInput.value.trim();
+                if (key) {
+                    this.aiService.gemini.setApiKey(key);
+                    this.aiService.setProvider('gemini');
+                    this.updateProviderUI();
+                    this.modal.classList.remove('open');
+                    const activeModel = this.aiService.getActiveModel();
+                    this.appendAssistantMessage(`✅ **Gemini Cloud AI Activated!** (Active Model: **${activeModel}**). You can now ask questions about the assembly!`);
                 }
-                this.appendAssistantMessage(`✅ Gemini API Key saved (Active Model: **${activeModel}**). You can now ask questions about the assembly!`);
             }
         });
 
@@ -567,8 +626,31 @@ class MechanicalApp {
         requestAnimationFrame(step);
     }
 
+    private updateProviderUI() {
+        const provider = this.aiService.getProvider();
+        const activeModel = this.aiService.getActiveModel();
+        const label = document.getElementById('active-provider-label');
+        if (label) {
+            if (provider === 'local') {
+                label.textContent = `Local: Nemotron-4B`;
+            } else {
+                label.textContent = `Gemini: ${activeModel}`;
+            }
+        }
+
+        const subtitle = document.querySelector('.chat-subtitle');
+        if (subtitle) {
+            if (provider === 'local') {
+                subtitle.textContent = `USD Scene API Grounded • Local Nemotron-4B`;
+            } else {
+                subtitle.textContent = `USD Scene API Grounded • Gemini Flash`;
+            }
+        }
+    }
+
     private checkApiKeyPrompt() {
-        if (!this.geminiService.hasApiKey()) {
+        this.updateProviderUI();
+        if (!this.aiService.hasCredentials()) {
             setTimeout(() => {
                 this.modal.classList.add('open');
             }, 800);
@@ -646,7 +728,7 @@ class MechanicalApp {
         const text = this.userInput.value.trim();
         if (!text) return;
 
-        if (!this.geminiService.hasApiKey()) {
+        if (!this.aiService.hasCredentials()) {
             this.modal.classList.add('open');
             return;
         }
@@ -658,10 +740,12 @@ class MechanicalApp {
 
         // Show AI status spinner
         this.aiStatus.classList.add('visible');
-        this.aiStatusText.textContent = 'Analyzing question...';
+        this.aiStatusText.textContent = this.aiService.getProvider() === 'local'
+            ? 'Analyzing with Nemotron-4B...'
+            : 'Analyzing question...';
 
         try {
-            const { text: replyText, executedTools } = await this.geminiService.chat(
+            const { text: replyText, executedTools } = await this.aiService.chat(
                 text,
                 (statusUpdate) => {
                     this.aiStatusText.textContent = statusUpdate;
