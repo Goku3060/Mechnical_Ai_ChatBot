@@ -3,12 +3,13 @@
 [![NVIDIA Omniverse](https://img.shields.io/badge/NVIDIA-Omniverse%20Kit-76B900?logo=nvidia&logoColor=white)](https://www.nvidia.com/omniverse/)
 [![OpenUSD](https://img.shields.io/badge/OpenUSD-Authoritative%20Stage-0080FF)](https://openusd.org/)
 [![WebRTC](https://img.shields.io/badge/WebRTC-1080p%2060FPS-orange)](https://webrtc.org/)
+[![NVIDIA Nemotron](https://img.shields.io/badge/NVIDIA%20Nemotron-3--Nano--4B%20(Offline%20Local)-76B900?logo=nvidia&logoColor=white)](https://huggingface.co/nvidia)
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-Flash%20Vision%20%2B%20Tools-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/)
 [![Vite](https://img.shields.io/badge/Vite-6.2%20TypeScript-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 
 An interactive industrial digital twin dashboard connecting a modern web client to a live **NVIDIA Omniverse Kit** USD PhysX/RTX ray-traced simulation of an automotive **Disc Brake Assembly** (`Assembly.usd`).
 
-The web client renders the Kit viewport as a real-time, low-latency WebRTC video stream (1080p 60 FPS) and provides an autonomous **Mechanical AI Copilot** powered by Google Gemini Flash. The Copilot is directly grounded in the live OpenUSD stage through 16 bidirectional USD Scene API endpoints—supporting assembly hierarchy queries, millimeter dimension calculations, camera framing, interactive visibility toggles, real-time material editing, 3D spatial screen projection, authoritative engineering Bill of Materials (BOM) calculations, and arbitrary USD Python execution.
+The web client renders the Kit viewport as a real-time, low-latency WebRTC video stream (1080p 60 FPS) and provides an autonomous **Mechanical AI Copilot** powered by a **Dual AI Engine**: an entirely private, offline local LLM running in **LM Studio** (**NVIDIA Nemotron-3-Nano-4B**) or cloud-based **Google Gemini Flash**. The Copilot is directly grounded in the live OpenUSD stage through 16 bidirectional USD Scene API endpoints—supporting assembly hierarchy queries, millimeter dimension calculations, camera framing, interactive visibility toggles, real-time material editing, 3D spatial screen projection, authoritative engineering Bill of Materials (BOM) calculations, kinematics control, and arbitrary USD Python execution.
 
 ---
 
@@ -35,14 +36,18 @@ The web client renders the Kit viewport as a real-time, low-latency WebRTC video
 flowchart LR
     User["Operator / Engineer"]
     WebClient["Web Client (Vite + TypeScript)"]
-    Gemini["Google Gemini Flash API"]
+    AiCoord["AiCoordinator (Dual AI Engine)"]
+    LocalLLM["Local LM Studio (:1235)\n(NVIDIA Nemotron-3-Nano-4B)"]
+    Gemini["Google Gemini Flash API\n(Cloud)"]
     WebRTC["@nvidia/ov-web-rtc"]
     Kit["Omniverse Kit Streaming Server"]
     StageManager["StageManager (Python Extension)"]
     USD["OpenUSD Stage (Assembly.usd)"]
 
     User -->|"Prompt / Interactive Controls"| WebClient
-    WebClient <-->|"Function Calling & Tool Execution"| Gemini
+    WebClient <--> AiCoord
+    AiCoord <-->|"OpenAI Tools RPC"| LocalLLM
+    AiCoord <-->|"Function Calling"| Gemini
     WebClient <-->|"Custom JSON Events (Data Channel)"| WebRTC
     WebRTC <-->|"WebRTC Stream (Port 49221)"| Kit
     Kit <--> StageManager
@@ -69,13 +74,20 @@ For full architectural specifications, data channel message schemas, and impleme
 │   └── Assembly.usda                # OpenUSD ASCII stage for inspection
 │
 ├── Web_Front/                       # Frontend Web Application (Vite + TypeScript)
-│   ├── src/
-│   │   ├── main.ts                  # App lifecycle, stream setup, BOM drawer, HUD & 3D callouts
-│   │   ├── index.css                # Glassmorphism dark mode & NVIDIA green design system
-│   │   └── services/
-│   │       ├── usdSceneClient.ts    # WebRTC custom message Promise bridge (16 endpoints)
-│   │       └── geminiService.ts     # Gemini Flash Copilot & 18 CAD tools catalog
-│   └── index.html                   # 3D viewport, BOM drawer, kinematics HUD, chat drawer, chips
+│   ├── vite.config.ts               # Vite bundler & /api/local-llm proxy to LM Studio (:1235)
+│   ├── package.json                 # Node dependencies (@nvidia/ov-web-rtc 6.x, Vite, TypeScript)
+│   ├── index.html                   # 3D viewport, BOM drawer, kinematics HUD, chat drawer, provider modal
+│   └── src/
+│       ├── main.ts                  # App coordinator, stream setup, BOM drawer, HUD & provider switcher
+│       ├── index.css                # Glassmorphism dark mode & NVIDIA green design system
+│       ├── services/
+│       │   ├── aiCoordinator.ts     # Dual AI Engine coordinator (Local Nemotron / Gemini Cloud)
+│       │   ├── localAiService.ts    # LM Studio OpenAI-compatible client & tool calling loop
+│       │   ├── usdSceneClient.ts    # WebRTC custom message Promise bridge (16 endpoints)
+│       │   └── geminiService.ts     # Gemini Flash Copilot & shared executeCadTool catalog
+│       └── tests/
+│           ├── localAi.test.ts      # Unit tests for OpenAI CAD tool schema generation
+│           └── sample.test.ts       # Test suite runner
 │
 ├── kit-app-template/                # Omniverse Kit Application & Custom Extensions
 │   └── source/

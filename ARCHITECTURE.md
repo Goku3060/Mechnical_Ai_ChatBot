@@ -2,13 +2,13 @@
 
 ## Executive Overview
 
-The **Mechanical AI Digital Twin** connects a high-performance web dashboard to an authoritative, live 3D engineering simulation running in **NVIDIA Omniverse Kit**. The system streams photorealistic, hardware-accelerated RTX ray-traced visuals of an automotive **Disc Brake Assembly** (`Assembly.usd`) directly into a browser using WebRTC, while pairing the live viewport with an autonomous **Multimodal Mechanical AI Copilot** powered by Google Gemini Flash.
+The **Mechanical AI Digital Twin** connects a high-performance web dashboard to an authoritative, live 3D engineering simulation running in **NVIDIA Omniverse Kit**. The system streams photorealistic, hardware-accelerated RTX ray-traced visuals of an automotive **Disc Brake Assembly** (`Assembly.usd`) directly into a browser using WebRTC, while pairing the live viewport with an autonomous **Multimodal Mechanical AI Copilot** powered by a **Dual AI Engine**: offline local LLM via **LM Studio** (**NVIDIA Nemotron-3-Nano-4B**) or cloud **Google Gemini Flash**.
 
 Unlike static 3D viewers or disconnected chatbots, this architecture provides a **closed-loop, bidirectional digital twin bridge**:
 1. **Authoritative OpenUSD Execution**: The 3D scene graph, geometric tolerances, CAD transforms, and MDL/PBR materials remain authoritative on the Omniverse Kit host.
 2. **Interactive 1080p 60 FPS Viewport**: The browser renders the hardware-decoded WebRTC stream using `@nvidia/ov-web-rtc` and provides smooth camera orbiting, panning, fly mode, and direct prim picking.
 3. **USD Scene API Grounding**: An in-engine Python messaging extension (`StageManager`) exposes 16 CAD inspection, navigation, spatial projection, and write-authoring endpoints over the WebRTC data channel.
-4. **Autonomous AI Function Calling**: The Gemini Flash Copilot translates natural-language queries into structured tool invocations (across 18 tools including `get_scene_summary`, `get_assembly_hierarchy`, `inspect_prim`, `get_part_dimensions`, `get_bill_of_materials`, `focus_camera_on_part`, `set_part_visibility`, `set_material_color`, `bind_material`, `execute_usd_code`, `set_exploded_view`, `set_rotor_kinematics`, `disassemble_component`). Gemini queries live scene state before answering and executes real-time stage modifications with zero manual coding from the operator.
+4. **Autonomous AI Function Calling (Dual Engine)**: The Copilot translates natural-language queries into structured tool invocations (across 18 tools including `get_scene_summary`, `get_assembly_hierarchy`, `inspect_prim`, `get_part_dimensions`, `get_bill_of_materials`, `focus_camera_on_part`, `set_part_visibility`, `set_material_color`, `bind_material`, `execute_usd_code`, `set_exploded_view`, `set_rotor_kinematics`, `disassemble_component`). Operators can run 100% offline using **NVIDIA Nemotron-3-Nano-4B** in LM Studio (via OpenAI-compatible tool calling) or via **Google Gemini Flash** in the cloud. The AI queries live scene state before answering and executes real-time stage modifications with zero manual coding from the operator.
 5. **Interactive CAD Chat Integration**: Part names generated in chat responses become clickable badges (`.part-tag`), enabling operators to click any mentioned mechanical component to instantly highlight and frame the 3D camera on it.
 
 ---
@@ -20,10 +20,16 @@ flowchart TD
     subgraph Client ["Browser Client (Web_Front - Port 5173)"]
         User["Operator / Mechanical Engineer"]
         UI["Web UI (Vite + TypeScript + Vanilla CSS)"]
-        GeminiService["GeminiService (Function Calling Orchestrator)"]
+        AiCoord["AiCoordinator (Dual AI Provider Switcher)"]
+        LocalAi["LocalAiService (OpenAI Protocol + Tool Loop)"]
+        GeminiService["GeminiService (Google REST Protocol + Tool Loop)"]
         UsdClient["UsdSceneClient (WebRTC Promise Bridge)"]
         WebRTCClient["@nvidia/ov-web-rtc (AppStreamer)"]
         VideoEl["HTML5 Video Element (1920x1080 60 FPS)"]
+    end
+
+    subgraph LocalAI ["Offline Local AI (LM Studio - Port 1235)"]
+        LMStudio["LM Studio Inference Server (NVIDIA-Nemotron-3-Nano-4B-GGUF)"]
     end
 
     subgraph Cloud ["Google Cloud AI Services"]
@@ -43,11 +49,14 @@ flowchart TD
     %% User interactions
     User -->|"Natural Language Prompts / Quick Chips"| UI
     User -->|"Viewport Orbit / Pan / Fly Controls"| VideoEl
-    UI --> GeminiService
+    UI --> AiCoord
     
-    %% Gemini AI Loop
-    GeminiService <-->|"Prompt + History + Tools Schema"| GeminiAPI
-    GeminiAPI -->|"Function Calls (CAD Tools)"| GeminiService
+    %% Dual AI Routing
+    AiCoord -->|"Local Provider Selected"| LocalAi
+    AiCoord -->|"Gemini Provider Selected"| GeminiService
+    LocalAi <-->|"OpenAI Chat Completions + Tools (/api/local-llm)"| LMStudio
+    GeminiService <-->|"Google REST + Tools Schema"| GeminiAPI
+    LocalAi -->|"Execute Tool Calls"| UsdClient
     GeminiService -->|"Execute Tool Calls"| UsdClient
     
     %% WebRTC Data Channel
@@ -74,6 +83,7 @@ flowchart TD
 ```text
 d:\Mechnical_Ai_Chatbot\
 ├── ARCHITECTURE.md                  # Comprehensive architectural reference (this document)
+├── README.md                        # Project quickstart & operational manual
 ├── start_streaming_server.bat       # Launches Omniverse Kit headless streaming server with Assembly.usd
 ├── start_web_client.bat             # Starts Vite development server for Web_Front (Port 5173)
 ├── stop_all.bat                     # Cleanly terminates kit.exe and frees port 5173
@@ -83,15 +93,20 @@ d:\Mechnical_Ai_Chatbot\
 │   └── Assembly.usda                # Human-readable ASCII USD stage (264 MB) for inspection & diffing
 │
 ├── Web_Front\                       # High-Performance Web Dashboard
-│   ├── index.html                   # Application layout, viewport container, chat drawer, API key modal
+│   ├── index.html                   # Application layout, viewport container, chat drawer, dual AI provider modal
 │   ├── package.json                 # Node dependencies (@nvidia/ov-web-rtc 6.x, Vite 6.2, TypeScript)
-│   ├── vite.config.ts               # Vite bundler configuration
+│   ├── vite.config.ts               # Vite bundler & /api/local-llm reverse proxy to LM Studio (:1235)
 │   └── src\
-│       ├── main.ts                  # App coordinator, WebRTC lifecycle, quick chips, part-click delegation
+│       ├── main.ts                  # App coordinator, WebRTC lifecycle, quick chips, HUD & provider switcher
 │       ├── index.css                # Glassmorphism design system, NVIDIA green tokens, micro-animations
-│       └── services\
-│           ├── usdSceneClient.ts    # Promise-based request/response bridge over WebRTC data channel
-│           └── geminiService.ts     # Gemini Flash function-calling orchestrator & CAD tools catalog
+│       ├── services\
+│       │   ├── aiCoordinator.ts     # Dual AI Engine coordinator (Local LM Studio / Google Gemini)
+│       │   ├── localAiService.ts    # OpenAI-compatible client for LM Studio with Nemotron-4B tool calling
+│       │   ├── usdSceneClient.ts    # Promise-based request/response bridge over WebRTC data channel
+│       │   └── geminiService.ts     # Gemini Flash orchestrator & universal executeCadTool executor
+│       └── tests\
+│           ├── localAi.test.ts      # Unit tests for OpenAI CAD tool schema generation
+│           └── sample.test.ts       # Test suite runner
 │
 ├── kit-app-template\                # Omniverse Kit Application & Extension Workspace
 │   ├── repo.bat / repo.sh           # Repository build toolchain
@@ -111,10 +126,13 @@ d:\Mechnical_Ai_Chatbot\
 
 | Component | Path / Package | Primary Responsibilities |
 |---|---|---|
-| **Web Client Host** | [`Web_Front/src/main.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/main.ts) | Manages application bootstrap, WebRTC stream configuration, status badges, kinematics HUD controls, 3D spatial callout rendering, Bill of Materials (BOM) drawer with CSV/JSON export, and delegates user clicks on interactive part chips. |
+| **Web Client Host** | [`Web_Front/src/main.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/main.ts) | Manages application bootstrap, WebRTC stream configuration, status badges, kinematics HUD controls, 3D spatial callout rendering, Bill of Materials (BOM) drawer with CSV/JSON export, AI provider configuration modal, and delegates user clicks on interactive part chips. |
+| **Dual AI Coordinator** | [`Web_Front/src/services/aiCoordinator.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/aiCoordinator.ts) | Unifies AI routing between offline Local LM Studio and Google Gemini Cloud; manages state persistence, active model tracking, and history clearing. |
+| **Local AI Service** | [`Web_Front/src/services/localAiService.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/localAiService.ts) | Connects to LM Studio (`http://localhost:1235/v1` or `/api/local-llm`), converts the 18 CAD tools into OpenAI JSON Schema, executes multi-turn function calling loops with Nemotron-3-Nano-4B, and parses model reasoning tokens. |
 | **USD Scene Client** | [`Web_Front/src/services/usdSceneClient.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/usdSceneClient.ts) | Wraps `@nvidia/ov-web-rtc` custom messaging in asynchronous Promises with unique correlation and 10s timeouts for 16 request/response RPC endpoints (including `getBillOfMaterials` and `getSpatialCallouts`). |
-| **AI Copilot Service** | [`Web_Front/src/services/geminiService.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/geminiService.ts) | Manages Google Gemini Flash multi-turn conversation, model catalog discovery, resilient fallback handling (503/429/500/404), 18 CAD tool declarations (`GEMINI_USD_TOOLS`), and tool execution. |
-| **Design System** | [`Web_Front/src/index.css`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/index.css) | Custom glassmorphism dark mode (`#0a0d14`), NVIDIA green accents (`#76b900`), cyan telemetry glows, responsive split-screen viewport layout, and animations. |
+| **Gemini AI Service** | [`Web_Front/src/services/geminiService.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/services/geminiService.ts) | Manages Google Gemini Flash multi-turn conversation, model catalog discovery, resilient fallback handling (503/429/500/404), 18 CAD tool declarations (`GEMINI_USD_TOOLS`), and universal tool execution (`executeCadTool`). |
+| **Vite Dev Server Proxy** | [`Web_Front/vite.config.ts`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/vite.config.ts) | Reverse-proxies `/api/local-llm/*` to `http://localhost:1235/*`, completely eliminating browser CORS or cross-origin restrictions for local models. |
+| **Design System** | [`Web_Front/src/index.css`](file:///d:/Mechnical_Ai_Chatbot/Web_Front/src/index.css) | Custom glassmorphism dark mode (`#0a0d14`), NVIDIA green accents (`#76b900`), cyan telemetry glows, provider switcher tabs, responsive split-screen viewport layout, and animations. |
 | **WebRTC SDK** | `@nvidia/ov-web-rtc` (v6.x) | Manages WebRTC peer connection, SDP negotiation, H.264 video decoding, mouse/keyboard input capture, and bidirectional data channel communication. |
 | **Kit Streaming App** | [`kit-app-template/source/apps/my_company.my_usd_viewer_streaming.kit`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/apps/my_company.my_usd_viewer_streaming.kit) | Configures Kit SDK with `omni.kit.livestream.app`, `omni.kit.livestream.webrtc`, locks renderer resolution to $1920 \times 1080$, and pins framerate to 60 FPS. |
 | **Setup Extension** | [`my_company.my_usd_viewer_setup_extension`](file:///d:/Mechnical_Ai_Chatbot/kit-app-template/source/extensions/my_company.my_usd_viewer_setup_extension/my_company/my_usd_viewer_setup_extension/setup.py) | Reads `--/app/auto_load_usd`, verifies file resolution, waits for stage readiness, opens the stage asynchronously, hides default menu bars, and enforces viewport layouts. |
